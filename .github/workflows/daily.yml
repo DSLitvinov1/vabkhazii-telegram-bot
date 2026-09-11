@@ -1,0 +1,23 @@
+name: Daily VAbkhazii Telegram post
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+      timezone: 'Europe/Moscow'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Publish daily post
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: '@VAbkhazii'
+        run: python bot.py
