@@ -6,11 +6,22 @@ on:
       timezone: 'Europe/Moscow'
     - cron: '0 19 * * *'
       timezone: 'Europe/Moscow'
+
   workflow_dispatch:
+    inputs:
+      post_mode:
+        description: 'Какой пост отправить'
+        required: true
+        default: 'morning'
+        type: choice
+        options:
+          - morning
+          - evening
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,4 +33,5 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL: '@VAbkhazii'
+          POST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.post_mode || 'auto' }}
         run: python bot.py
