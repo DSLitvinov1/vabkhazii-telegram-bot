@@ -2,9 +2,9 @@ name: Daily VAbkhazii Telegram post
 
 on:
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '7 9 * * *'
       timezone: 'Europe/Moscow'
-    - cron: '0 19 * * *'
+    - cron: '7 19 * * *'
       timezone: 'Europe/Moscow'
 
   workflow_dispatch:
