@@ -1,18 +1,12 @@
 name: Daily VAbkhazii Telegram post
 
 on:
-  schedule:
-    - cron: '7 9 * * *'
-      timezone: 'Europe/Moscow'
-    - cron: '7 19 * * *'
-      timezone: 'Europe/Moscow'
-
   workflow_dispatch:
     inputs:
       post_mode:
-        description: 'Какой пост отправить'
+        description: "Какой пост отправить"
         required: true
-        default: 'morning'
+        default: "morning"
         type: choice
         options:
           - morning
@@ -23,15 +17,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Download bot
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Restore content history
+        uses: actions/cache@v4
         with:
-          python-version: '3.12'
+          path: .bot_state
+          key: vabkhazii-state-${{ github.run_id }}
+          restore-keys: |
+            vabkhazii-state-
 
-      - name: Publish daily post
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check Python code
+        run: python -m py_compile bot.py
+
+      - name: Publish Telegram post
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL: '@VAbkhazii'
-          POST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.post_mode || 'auto' }}
+          TELEGRAM_CHANNEL: "@VAbkhazii"
+          POST_MODE: ${{ inputs.post_mode }}
         run: python bot.py
