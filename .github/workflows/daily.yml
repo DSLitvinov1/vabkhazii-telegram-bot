@@ -1,16 +1,7 @@
-name: Daily VAbkhazii Telegram post
+name: VAbkhazii Daily Post
 
 on:
   workflow_dispatch:
-    inputs:
-      post_mode:
-        description: "Какой пост отправить"
-        required: true
-        default: "morning"
-        type: choice
-        options:
-          - morning
-          - evening
 
 jobs:
   publish:
@@ -40,5 +31,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL: "@VAbkhazii"
-          POST_MODE: ${{ inputs.post_mode }}
         run: python bot.py
