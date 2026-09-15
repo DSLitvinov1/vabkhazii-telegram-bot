@@ -1,167 +1,522 @@
 import json
 import os
+import re
+import html
 import urllib.parse
 import urllib.request
-from datetime import datetime
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
-TZ = "Europe/Moscow"
-CHANNEL = os.getenv("TELEGRAM_CHANNEL", "@VAbkhazii")
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-FORCE_MODE = os.getenv("POST_MODE", "auto").lower()
 
-# Координаты используются только для прогноза погоды.
+TZ = "Europe/Moscow"
+
+CHANNEL = os.getenv(
+    "TELEGRAM_CHANNEL",
+    "@VAbkhazii"
+)
+
+BOT_TOKEN = os.getenv(
+    "TELEGRAM_BOT_TOKEN"
+)
+
+FORCE_MODE = os.getenv(
+    "POST_MODE",
+    "auto"
+).lower()
+
+
 PLACES = {
-    "Гагра": (43.2783, 40.2712),
-    "Рица": (43.4840, 40.5430),
-    "Новый Афон": (43.0877, 40.8136),
-    "Восточная Абхазия": (42.8528, 41.6805),
-    "Мзы": (43.4160, 40.5680),
+    "Гагра": (
+        43.2783,
+        40.2712
+    ),
+
+    "Рица": (
+        43.4840,
+        40.5430
+    ),
+
+    "Новый Афон": (
+        43.0877,
+        40.8136
+    ),
+
+    "Восточная Абхазия": (
+        42.8528,
+        41.6805
+    ),
+
+    "Мзы": (
+        43.4160,
+        40.5680
+    ),
 }
 
-SEA_POINT = (43.2600, 40.2400)
 
-WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
-MARINE_URL = "https://marine-api.open-meteo.com/v1/marine"
-TG_URL = "https://api.telegram.org/bot{token}/sendMessage"
+SEA_POINT = (
+    43.2600,
+    40.2400
+)
+
+
+WEATHER_URL = (
+    "https://api.open-meteo.com/v1/forecast"
+)
+
+MARINE_URL = (
+    "https://marine-api.open-meteo.com/v1/marine"
+)
+
+TG_URL = (
+    "https://api.telegram.org/"
+    "bot{token}/sendMessage"
+)
+
+
+NEWS_RSS = (
+    "https://news.google.com/rss/search?"
+    + urllib.parse.urlencode(
+        {
+            "q": "Абхазия when:2d",
+            "hl": "ru",
+            "gl": "RU",
+            "ceid": "RU:ru",
+        }
+    )
+)
+
 
 WEATHER_TEXT = {
+
     0: "ясно",
     1: "преимущественно ясно",
     2: "переменная облачность",
     3: "пасмурно",
+
     45: "туман",
     48: "туман",
+
     51: "морось",
     53: "морось",
     55: "морось",
+
     61: "небольшой дождь",
     63: "дождь",
     65: "сильный дождь",
+
     71: "небольшой снег",
     73: "снег",
     75: "сильный снег",
+
     80: "ливни",
     81: "ливни",
     82: "сильные ливни",
+
     95: "гроза",
     96: "гроза с градом",
     99: "сильная гроза",
 }
 
+
 MONTHS = {
+
     1: "ЯНВАРЯ",
     2: "ФЕВРАЛЯ",
     3: "МАРТА",
     4: "АПРЕЛЯ",
+
     5: "МАЯ",
     6: "ИЮНЯ",
     7: "ИЮЛЯ",
     8: "АВГУСТА",
+
     9: "СЕНТЯБРЯ",
     10: "ОКТЯБРЯ",
     11: "НОЯБРЯ",
     12: "ДЕКАБРЯ",
 }
 
-SEVERE_CODES = {65, 75, 82, 95, 96, 99}
-WET_CODES = {
-    51, 53, 55,
-    61, 63, 65,
-    80, 81, 82,
-    95, 96, 99,
+
+SEVERE_CODES = {
+    65,
+    75,
+    82,
+    95,
+    96,
+    99
 }
 
-FOG_CODES = {45, 48}
+
+WET_CODES = {
+
+    51,
+    53,
+    55,
+
+    61,
+    63,
+    65,
+
+    80,
+    81,
+    82,
+
+    95,
+    96,
+    99
+}
 
 
-def get_json(base_url, params):
-    url = base_url + "?" + urllib.parse.urlencode(params)
+FOG_CODES = {
+    45,
+    48
+}
 
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "VAbkhaziiBot/2.0"},
+
+# Что автоматически исключаем из новостей.
+POLITICS = {
+
+    "президент",
+    "парламент",
+    "депутат",
+    "выбор",
+    "правительств",
+    "министр",
+    "мид",
+
+    "оппози",
+    "политик",
+    "санкци",
+    "войн",
+    "военн",
+    "армия",
+
+    "конфликт",
+    "протест",
+    "митинг",
+    "переговор",
+    "посол",
+    "дипломат",
+
+    "суд",
+    "задержан",
+    "уголов",
+    "криминал",
+
+    "дтп",
+    "погиб",
+    "ранен",
+}
+
+
+# Какие темы считаем интересными
+# для туристического канала.
+GOOD_TOPICS = {
+
+    "туризм",
+    "турист",
+    "путеше",
+    "экскурс",
+
+    "фестиваль",
+    "праздник",
+    "культур",
+    "театр",
+    "музей",
+    "выставк",
+    "концерт",
+
+    "гастроном",
+    "кухн",
+    "вин",
+
+    "природ",
+    "озеро",
+    "водопад",
+    "гора",
+    "море",
+    "пляж",
+
+    "парк",
+    "заповед",
+    "эколог",
+
+    "истори",
+    "традиц",
+    "археолог",
+
+    "маршрут",
+    "отдых",
+    "гостеприим",
+
+    "сезон",
+    "сад",
+    "мандари",
+}
+
+
+# Если достойной свежей новости нет,
+# публикуется один факт из этой базы.
+FACTS = [
+
+    (
+        "Озеро Амткел образовалось "
+        "после крупного горного обвала, "
+        "перекрывшего русло реки Амткел."
+    ),
+
+    (
+        "Озеро Рица находится высоко "
+        "в горах и окружено лесистыми "
+        "склонами Кавказа."
+    ),
+
+    (
+        "Новый Афон известен не только "
+        "монастырём и пещерой, но и "
+        "Анакопийской крепостью "
+        "на Иверской горе."
+    ),
+
+    (
+        "Акармара — бывший шахтёрский "
+        "посёлок в восточной части "
+        "Абхазии, известный необычной "
+        "архитектурой и горными пейзажами."
+    ),
+
+    (
+        "В Абхазии на небольшой территории "
+        "соседствуют морское побережье, "
+        "субтропики и высокогорные "
+        "ландшафты."
+    ),
+
+    (
+        "Пицундская сосна — один из "
+        "символов побережья Абхазии. "
+        "Её реликтовые рощи особенно "
+        "известны в районе Пицунды."
+    ),
+
+    (
+        "Юпшарский каньон по дороге "
+        "к Рице часто называют "
+        "«Каменным мешком» из-за "
+        "почти отвесных скальных стен."
+    ),
+
+    (
+        "В Абхазии есть множество "
+        "минеральных источников, "
+        "многие из которых известны "
+        "с давних времён."
+    ),
+
+    (
+        "Сухумский ботанический сад — "
+        "один из старейших ботанических "
+        "садов Кавказа."
+    ),
+
+    (
+        "Высокогорное озеро Мзы лежит "
+        "значительно выше курортного "
+        "побережья, поэтому погода там "
+        "может сильно отличаться от Гагры."
+    ),
+
+    (
+        "Шакуранский водопад расположен "
+        "в живописном ущелье и особенно "
+        "впечатляет после периода дождей."
+    ),
+
+    (
+        "Новоафонская пещера — одна "
+        "из крупнейших оборудованных "
+        "для посещения пещер региона."
+    ),
+]
+
+
+def get_json(
+    base_url,
+    params
+):
+
+    url = (
+        base_url
+        + "?"
+        + urllib.parse.urlencode(
+            params
+        )
     )
 
-    with urllib.request.urlopen(req, timeout=25) as resp:
+    req = urllib.request.Request(
+
+        url,
+
+        headers={
+            "User-Agent":
+                "VAbkhaziiBot/3.0"
+        }
+    )
+
+    with urllib.request.urlopen(
+        req,
+        timeout=25
+    ) as resp:
+
         return json.loads(
-            resp.read().decode("utf-8")
+            resp.read().decode(
+                "utf-8"
+            )
         )
 
 
-def weather_for(lat, lon):
+def get_text(url):
 
-    data = get_json(
-        WEATHER_URL,
-        {
-            "latitude": lat,
-            "longitude": lon,
+    req = urllib.request.Request(
 
-            "current":
-                "temperature_2m,"
-                "weather_code,"
-                "cloud_cover,"
-                "wind_speed_10m",
+        url,
 
-            "daily":
-                "weather_code,"
-                "temperature_2m_max,"
-                "temperature_2m_min,"
-                "precipitation_probability_max,"
-                "precipitation_sum,"
-                "wind_speed_10m_max",
-
-            "forecast_days": 2,
-            "timezone": TZ,
-        },
+        headers={
+            "User-Agent":
+                "Mozilla/5.0 "
+                "VAbkhaziiBot/3.0"
+        }
     )
 
-    cur = data["current"]
-    daily = data["daily"]
+    with urllib.request.urlopen(
+        req,
+        timeout=25
+    ) as resp:
+
+        return (
+            resp.read()
+            .decode(
+                "utf-8",
+                errors="replace"
+            )
+        )
+
+
+def weather_for(
+    lat,
+    lon
+):
+
+    data = get_json(
+
+        WEATHER_URL,
+
+        {
+
+            "latitude":
+                lat,
+
+            "longitude":
+                lon,
+
+            "current":
+                (
+                    "temperature_2m,"
+                    "weather_code,"
+                    "cloud_cover,"
+                    "wind_speed_10m"
+                ),
+
+            "daily":
+                (
+                    "weather_code,"
+                    "temperature_2m_max,"
+                    "temperature_2m_min,"
+                    "precipitation_probability_max,"
+                    "precipitation_sum,"
+                    "wind_speed_10m_max"
+                ),
+
+            "forecast_days":
+                2,
+
+            "timezone":
+                TZ,
+        }
+    )
+
+
+    cur = data[
+        "current"
+    ]
+
+    daily = data[
+        "daily"
+    ]
+
 
     days = []
 
+
     for i in range(2):
 
-        days.append({
+        days.append(
+            {
 
-            "date":
-                daily["time"][i],
-
-            "code":
-                int(daily["weather_code"][i]),
-
-            "max":
-                round(
-                    daily["temperature_2m_max"][i]
-                ),
-
-            "min":
-                round(
-                    daily["temperature_2m_min"][i]
-                ),
-
-            "rain_prob":
-                int(
+                "date":
                     daily[
-                        "precipitation_probability_max"
-                    ][i] or 0
-                ),
+                        "time"
+                    ][i],
 
-            "rain_sum":
-                float(
-                    daily[
-                        "precipitation_sum"
-                    ][i] or 0
-                ),
+                "code":
+                    int(
+                        daily[
+                            "weather_code"
+                        ][i]
+                    ),
 
-            "wind_max":
-                round(
-                    daily[
-                        "wind_speed_10m_max"
-                    ][i] or 0
-                ),
-        })
+                "max":
+                    round(
+                        daily[
+                            "temperature_2m_max"
+                        ][i]
+                    ),
+
+                "min":
+                    round(
+                        daily[
+                            "temperature_2m_min"
+                        ][i]
+                    ),
+
+                "rain_prob":
+                    int(
+                        daily[
+                            "precipitation_probability_max"
+                        ][i]
+                        or 0
+                    ),
+
+                "rain_sum":
+                    float(
+                        daily[
+                            "precipitation_sum"
+                        ][i]
+                        or 0
+                    ),
+
+                "wind_max":
+                    round(
+                        daily[
+                            "wind_speed_10m_max"
+                        ][i]
+                        or 0
+                    ),
+            }
+        )
+
 
     return {
 
@@ -169,26 +524,35 @@ def weather_for(lat, lon):
 
             "temp":
                 round(
-                    cur["temperature_2m"]
+                    cur[
+                        "temperature_2m"
+                    ]
                 ),
 
             "code":
                 int(
-                    cur["weather_code"]
+                    cur[
+                        "weather_code"
+                    ]
                 ),
 
             "cloud":
                 int(
-                    cur["cloud_cover"]
+                    cur[
+                        "cloud_cover"
+                    ]
                 ),
 
             "wind":
                 round(
-                    cur["wind_speed_10m"]
+                    cur[
+                        "wind_speed_10m"
+                    ]
                 ),
         },
 
-        "days": days,
+        "days":
+            days,
     }
 
 
@@ -199,25 +563,37 @@ def marine_now():
     try:
 
         data = get_json(
+
             MARINE_URL,
+
             {
-                "latitude": lat,
-                "longitude": lon,
+
+                "latitude":
+                    lat,
+
+                "longitude":
+                    lon,
 
                 "current":
-                    "sea_surface_temperature,"
-                    "wave_height",
+                    (
+                        "sea_surface_temperature,"
+                        "wave_height"
+                    ),
 
-                "timezone": TZ,
-            },
+                "timezone":
+                    TZ,
+            }
         )
+
 
         cur = data.get(
             "current",
             {}
         )
 
+
         return {
+
             "sea_temp":
                 cur.get(
                     "sea_surface_temperature"
@@ -229,6 +605,7 @@ def marine_now():
                 ),
         }
 
+
     except Exception as exc:
 
         print(
@@ -237,19 +614,33 @@ def marine_now():
         )
 
         return {
-            "sea_temp": None,
-            "wave": None,
+
+            "sea_temp":
+                None,
+
+            "wave":
+                None,
         }
 
 
-def route_status(name, day):
+def route_status(
+    name,
+    day
+):
 
-    code = day["code"]
-    rain = day["rain_prob"]
-    wind = day["wind_max"]
+    code = day[
+        "code"
+    ]
 
-    # Мзы — высокогорье,
-    # поэтому требования строже.
+    rain = day[
+        "rain_prob"
+    ]
+
+    wind = day[
+        "wind_max"
+    ]
+
+
     if name == "Мзы":
 
         if (
@@ -260,9 +651,13 @@ def route_status(name, day):
 
             return (
                 "🔴",
-                "лучше выбрать другой маршрут",
-                3,
+                (
+                    "сегодня лучше выбрать "
+                    "другой маршрут"
+                ),
+                3
             )
+
 
         if (
             code in WET_CODES
@@ -273,17 +668,21 @@ def route_status(name, day):
 
             return (
                 "🟡",
-                "высокогорье: погода может быстро измениться",
-                2,
+                (
+                    "высокогорье: возможны "
+                    "быстро меняющиеся условия"
+                ),
+                2
             )
+
 
         return (
             "🟢",
             "хорошие условия по прогнозу",
-            1,
+            1
         )
 
-    # Рица
+
     if name == "Рица":
 
         if (
@@ -294,9 +693,13 @@ def route_status(name, day):
 
             return (
                 "🔴",
-                "лучше перенести ради безопасности и видов",
-                3,
+                (
+                    "лучше перенести ради "
+                    "безопасности и видов"
+                ),
+                3
             )
+
 
         if (
             code in WET_CODES
@@ -307,17 +710,24 @@ def route_status(name, day):
 
             return (
                 "🟡",
-                "ехать можно, но панорамы могут быть хуже",
-                2,
+                (
+                    "ехать можно, но панорамы "
+                    "могут быть хуже"
+                ),
+                2
             )
+
 
         return (
             "🟢",
-            "хороший вариант для видов и фотографий",
-            1,
+            (
+                "хороший вариант для "
+                "видов и фотографий"
+            ),
+            1
         )
 
-    # Восточная Абхазия
+
     if name == "Восточная Абхазия":
 
         if (
@@ -328,9 +738,13 @@ def route_status(name, day):
 
             return (
                 "🔴",
-                "сильная непогода — лучше выбрать другой день",
-                3,
+                (
+                    "сильная непогода — "
+                    "лучше выбрать другой день"
+                ),
+                3
             )
+
 
         if (
             code in WET_CODES
@@ -340,17 +754,24 @@ def route_status(name, day):
 
             return (
                 "🟡",
-                "можно, но учитывайте осадки",
-                2,
+                (
+                    "можно, но учитывайте "
+                    "осадки"
+                ),
+                2
             )
+
 
         return (
             "🟢",
-            "хороший день для Акармары и водопадов",
-            1,
+            (
+                "хороший день для "
+                "Акармары и водопадов"
+            ),
+            1
         )
 
-    # Новый Афон
+
     if (
         code in SEVERE_CODES
         or rain >= 85
@@ -358,9 +779,13 @@ def route_status(name, day):
 
         return (
             "🔴",
-            "при сильной непогоде лучше перенести",
-            3,
+            (
+                "при сильной непогоде "
+                "лучше перенести"
+            ),
+            3
         )
+
 
     if (
         code in WET_CODES
@@ -370,14 +795,18 @@ def route_status(name, day):
 
         return (
             "🟡",
-            "подойдёт, но возможны осадки",
-            2,
+            (
+                "подойдёт, но возможны "
+                "осадки"
+            ),
+            2
         )
+
 
     return (
         "🟢",
         "комфортный вариант по прогнозу",
-        1,
+        1
     )
 
 
@@ -387,62 +816,112 @@ def choose_best(
 ):
 
     candidates = [
+
         "Рица",
         "Новый Афон",
         "Восточная Абхазия",
         "Мзы",
     ]
 
+
     scored = []
+
 
     for name in candidates:
 
-        day = weather[name]["days"][day_index]
-
-        _, _, status_score = route_status(
-            name,
-            day
+        day = (
+            weather[
+                name
+            ][
+                "days"
+            ][
+                day_index
+            ]
         )
 
+
+        _, _, status_score = (
+            route_status(
+                name,
+                day
+            )
+        )
+
+
         sensitivity = (
+
             1.25
-            if name in {"Рица", "Мзы"}
+
+            if name in {
+                "Рица",
+                "Мзы"
+            }
+
             else 1.0
         )
 
+
         score = (
+
             status_score * 100
-            + sensitivity * day["rain_prob"]
-            + day["rain_sum"] * 8
+
+            + sensitivity
+            * day[
+                "rain_prob"
+            ]
+
+            + day[
+                "rain_sum"
+            ] * 8
+
             + max(
                 0,
-                day["wind_max"] - 18
+                day[
+                    "wind_max"
+                ] - 18
             ) * 2
         )
 
+
         scored.append(
-            (score, name)
+            (
+                score,
+                name
+            )
         )
+
 
     scored.sort()
 
-    return scored[0][1]
+
+    return scored[
+        0
+    ][
+        1
+    ]
 
 
 def fmt_num(value):
 
     if value is None:
+
         return None
 
-    return f"{float(value):.1f}"
+
+    return (
+        f"{float(value):.1f}"
+    )
 
 
-def date_title(iso_date):
+def date_title(
+    iso_date
+):
 
     dt = datetime.strptime(
         iso_date,
         "%Y-%m-%d"
     )
+
 
     return (
         f"{dt.day} "
@@ -450,7 +929,9 @@ def date_title(iso_date):
     )
 
 
-def sea_line(marine):
+def sea_line(
+    marine
+):
 
     sea_temp = marine.get(
         "sea_temp"
@@ -460,6 +941,7 @@ def sea_line(marine):
         "wave"
     )
 
+
     if (
         sea_temp is None
         and wave is None
@@ -467,39 +949,393 @@ def sea_line(marine):
 
         return None
 
+
     parts = []
+
 
     if sea_temp is not None:
 
         parts.append(
+
             f"вода около "
             f"<b>+{fmt_num(sea_temp)}°C</b>"
         )
 
+
     if wave is not None:
 
         if wave < 0.4:
-            state = "море спокойное"
+
+            state = (
+                "море спокойное"
+            )
 
         elif wave < 0.8:
-            state = "небольшая волна"
+
+            state = (
+                "небольшая волна"
+            )
 
         elif wave < 1.4:
-            state = "заметная волна"
+
+            state = (
+                "заметная волна"
+            )
 
         else:
-            state = "море волнуется"
+
+            state = (
+                "море волнуется"
+            )
+
 
         parts.append(
-            f"{state}, "
-            f"около "
+
+            f"{state}, около "
             f"<b>{fmt_num(wave)} м</b>"
         )
 
+
     return (
         "🌊 Море: "
-        + ", ".join(parts)
+        + ", ".join(
+            parts
+        )
         + "."
+    )
+
+
+def clean_title(
+    text
+):
+
+    text = html.unescape(
+
+        re.sub(
+            r"<[^>]+>",
+            "",
+            text or ""
+        )
+    )
+
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    ).strip()
+
+
+    return text
+
+
+def is_allowed_news(
+    title
+):
+
+    text = title.lower()
+
+
+    if "абхаз" not in text:
+
+        return False
+
+
+    if any(
+
+        word in text
+
+        for word
+        in POLITICS
+
+    ):
+
+        return False
+
+
+    return any(
+
+        word in text
+
+        for word
+        in GOOD_TOPICS
+    )
+
+
+def shorten_title(
+    title
+):
+
+    title = re.sub(
+
+        r"\s+-\s+[^-]{2,60}$",
+
+        "",
+
+        title
+
+    ).strip()
+
+
+    if len(
+        title
+    ) > 180:
+
+        title = (
+            title[
+                :177
+            ].rstrip()
+            + "…"
+        )
+
+
+    return title
+
+
+def find_fresh_news():
+
+    try:
+
+        xml_text = get_text(
+            NEWS_RSS
+        )
+
+
+        root = ET.fromstring(
+            xml_text
+        )
+
+
+        cutoff = (
+
+            datetime.now(
+                ZoneInfo(
+                    TZ
+                )
+            )
+
+            - timedelta(
+                hours=48
+            )
+        )
+
+
+        candidates = []
+
+
+        for item in root.findall(
+            ".//item"
+        ):
+
+            title = clean_title(
+                item.findtext(
+                    "title"
+                )
+            )
+
+
+            link = (
+                item.findtext(
+                    "link"
+                )
+                or ""
+            ).strip()
+
+
+            pub = (
+                item.findtext(
+                    "pubDate"
+                )
+                or ""
+            ).strip()
+
+
+            if (
+                not title
+                or not link
+                or not is_allowed_news(
+                    title
+                )
+            ):
+
+                continue
+
+
+            try:
+
+                published = (
+                    parsedate_to_datetime(
+                        pub
+                    )
+                )
+
+
+                if (
+                    published.tzinfo
+                    is None
+                ):
+
+                    published = (
+                        published.replace(
+                            tzinfo=ZoneInfo(
+                                "UTC"
+                            )
+                        )
+                    )
+
+
+                local_pub = (
+                    published.astimezone(
+                        ZoneInfo(
+                            TZ
+                        )
+                    )
+                )
+
+
+            except Exception:
+
+                continue
+
+
+            if local_pub < cutoff:
+
+                continue
+
+
+            score = sum(
+
+                1
+
+                for word
+                in GOOD_TOPICS
+
+                if word
+                in title.lower()
+            )
+
+
+            candidates.append(
+                (
+                    score,
+                    local_pub,
+                    shorten_title(
+                        title
+                    ),
+                    link
+                )
+            )
+
+
+        if not candidates:
+
+            return None
+
+
+        candidates.sort(
+
+            key=lambda x: (
+                x[0],
+                x[1]
+            ),
+
+            reverse=True
+        )
+
+
+        _, published, title, link = (
+            candidates[
+                0
+            ]
+        )
+
+
+        return {
+
+            "title":
+                title,
+
+            "url":
+                link,
+
+            "published":
+                published,
+        }
+
+
+    except Exception as exc:
+
+        print(
+            "News warning:",
+            exc
+        )
+
+
+        return None
+
+
+def fact_of_day():
+
+    today = datetime.now(
+        ZoneInfo(
+            TZ
+        )
+    ).date()
+
+
+    index = (
+        today.toordinal()
+        % len(
+            FACTS
+        )
+    )
+
+
+    return FACTS[
+        index
+    ]
+
+
+def interesting_block():
+
+    news = find_fresh_news()
+
+
+    if news:
+
+        return (
+
+            "📰 <b>ЧТО ИНТЕРЕСНОГО "
+            "В АБХАЗИИ</b>\n"
+
+            + html.escape(
+                news[
+                    "title"
+                ]
+            )
+
+            + "\n"
+
+            + (
+                '🔗 <a href="'
+                + html.escape(
+                    news[
+                        "url"
+                    ],
+                    quote=True
+                )
+                + '">Источник</a>'
+            )
+        )
+
+
+    return (
+
+        "📍 <b>ФАКТ ДНЯ</b>\n"
+
+        + html.escape(
+            fact_of_day()
+        )
     )
 
 
@@ -508,68 +1344,113 @@ def build_morning_post(
     marine
 ):
 
-    g = weather["Гагра"]
+    g = weather[
+        "Гагра"
+    ]
 
-    today = g["days"][0]
-    cur = g["current"]
+
+    today = g[
+        "days"
+    ][
+        0
+    ]
+
+
+    cur = g[
+        "current"
+    ]
+
 
     best = choose_best(
         weather,
         0
     )
 
-    weather_desc = WEATHER_TEXT.get(
-        today["code"],
-        "переменная погода"
+
+    weather_desc = (
+        WEATHER_TEXT.get(
+            today[
+                "code"
+            ],
+            "переменная погода"
+        )
     )
+
 
     lines = [
 
-        f"🇦🇧 <b>АБХАЗИЯ СЕГОДНЯ | "
-        f"{date_title(today['date'])}</b>",
+        (
+            f"🇦🇧 <b>АБХАЗИЯ СЕГОДНЯ | "
+            f"{date_title(today['date'])}</b>"
+        ),
 
         "",
 
-        f"🌤 Побережье: "
-        f"<b>{weather_desc}</b>. "
-        f"Сейчас около "
-        f"<b>+{cur['temp']}°C</b>, "
-        f"днём до "
-        f"<b>+{today['max']}°C</b>.",
+        (
+            f"🌤 Побережье: "
+            f"<b>{weather_desc}</b>. "
+            f"Сейчас около "
+            f"<b>+{cur['temp']}°C</b>, "
+            f"днём до "
+            f"<b>+{today['max']}°C</b>."
+        ),
 
-        f"🌧 Осадки: вероятность до "
-        f"<b>{today['rain_prob']}%</b>. "
-        f"Ветер до "
-        f"<b>{today['wind_max']} км/ч</b>.",
+        (
+            f"🌧 Осадки: вероятность до "
+            f"<b>{today['rain_prob']}%</b>. "
+            f"Ветер до "
+            f"<b>{today['wind_max']} км/ч</b>."
+        ),
     ]
+
 
     sline = sea_line(
         marine
     )
 
+
     if sline:
+
         lines.append(
             sline
         )
 
+
     lines += [
+
         "",
+
         "<b>Куда я бы поехал сегодня:</b>",
     ]
 
+
     for name in [
+
         "Рица",
         "Новый Афон",
         "Восточная Абхазия",
         "Мзы",
+
     ]:
 
-        day = weather[name]["days"][0]
-
-        emoji, note, _ = route_status(
-            name,
-            day
+        day = (
+            weather[
+                name
+            ][
+                "days"
+            ][
+                0
+            ]
         )
+
+
+        emoji, note, _ = (
+            route_status(
+                name,
+                day
+            )
+        )
+
 
         lines.append(
 
@@ -582,36 +1463,54 @@ def build_morning_post(
             f"{day['rain_prob']}%."
         )
 
+
     lines += [
 
         "",
 
-        f"🔥 <b>МОЙ ВЫБОР НА СЕГОДНЯ: "
-        f"{best.upper()}</b>",
+        (
+            f"🔥 <b>МОЙ ВЫБОР НА СЕГОДНЯ: "
+            f"{best.upper()}</b>"
+        ),
 
-        "По прогнозу это один из наиболее "
-        "удачных вариантов на день.",
+        (
+            "По прогнозу это один "
+            "из наиболее удачных "
+            "вариантов на день."
+        ),
 
         "",
 
-        "⚠️ Для горных маршрутов прогноз — "
-        "ориентир. Погода в горах может "
-        "меняться быстро.",
+        interesting_block(),
 
-        "⚠️ В горах погода переменчива, поэтому перед выездом всегда учитывайте текущую обстановку на маршруте.",
         "",
 
-        "📍 <b>Уже отдыхаете в Абхазии?</b>",
+        (
+            "⚠️ В горах погода переменчива, "
+            "поэтому перед выездом всегда "
+            "учитывайте текущую обстановку "
+            "на маршруте."
+        ),
 
-        "Напишите "
-        "<b>город + сколько вас человек</b> "
-        "— подскажу маршрут на сегодня "
-        "или завтра.",
+        "",
+
+        (
+            "📍 <b>Уже отдыхаете "
+            "в Абхазии?</b>"
+        ),
+
+        (
+            "Напишите "
+            "<b>город + сколько вас человек</b> "
+            "— подскажу маршрут "
+            "на сегодня или завтра."
+        ),
 
         "",
 
         "👉 @VAbkhazii",
     ]
+
 
     return "\n".join(
         lines
@@ -622,58 +1521,97 @@ def build_evening_post(
     weather
 ):
 
-    g = weather["Гагра"]
+    g = weather[
+        "Гагра"
+    ]
 
-    tomorrow = g["days"][1]
+
+    tomorrow = g[
+        "days"
+    ][
+        1
+    ]
+
 
     best = choose_best(
         weather,
         1
     )
 
-    weather_desc = WEATHER_TEXT.get(
-        tomorrow["code"],
-        "переменная погода"
+
+    weather_desc = (
+        WEATHER_TEXT.get(
+            tomorrow[
+                "code"
+            ],
+            "переменная погода"
+        )
     )
+
 
     lines = [
 
-        f"🚙 <b>КУДА ЕДЕМ ЗАВТРА | "
-        f"{date_title(tomorrow['date'])}</b>",
+        (
+            f"🚙 <b>КУДА ЕДЕМ ЗАВТРА | "
+            f"{date_title(tomorrow['date'])}</b>"
+        ),
 
         "",
 
-        f"🌤 На побережье ожидается "
-        f"<b>{weather_desc}</b>.",
+        (
+            f"🌤 На побережье ожидается "
+            f"<b>{weather_desc}</b>."
+        ),
 
-        f"🌡 Температура примерно "
-        f"<b>+{tomorrow['min']}…"
-        f"+{tomorrow['max']}°C</b>.",
+        (
+            f"🌡 Температура примерно "
+            f"<b>+{tomorrow['min']}…"
+            f"+{tomorrow['max']}°C</b>."
+        ),
 
-        f"🌧 Вероятность осадков — "
-        f"до <b>{tomorrow['rain_prob']}%</b>.",
+        (
+            f"🌧 Вероятность осадков — "
+            f"до <b>{tomorrow['rain_prob']}%</b>."
+        ),
 
-        f"💨 Ветер до "
-        f"<b>{tomorrow['wind_max']} км/ч</b>.",
+        (
+            f"💨 Ветер до "
+            f"<b>{tomorrow['wind_max']} км/ч</b>."
+        ),
 
         "",
 
         "<b>Что выбрать на завтра:</b>",
     ]
 
+
     for name in [
+
         "Рица",
         "Новый Афон",
         "Восточная Абхазия",
         "Мзы",
+
     ]:
 
-        day = weather[name]["days"][1]
-
-        emoji, note, _ = route_status(
-            name,
-            day
+        day = (
+            weather[
+                name
+            ][
+                "days"
+            ][
+                1
+            ]
         )
+
+
+        emoji, note, _ = (
+            route_status(
+                name,
+                day
+            )
+        )
+
 
         lines.append(
 
@@ -686,33 +1624,46 @@ def build_evening_post(
             f"+{day['max']}°C."
         )
 
+
     lines += [
 
         "",
 
-        f"🔥 <b>МОЯ РЕКОМЕНДАЦИЯ "
-        f"НА ЗАВТРА: "
-        f"{best.upper()}</b>",
+        (
+            f"🔥 <b>МОЯ РЕКОМЕНДАЦИЯ "
+            f"НА ЗАВТРА: "
+            f"{best.upper()}</b>"
+        ),
 
         "",
 
-        "Свободные места и детали ближайших поездок уточняйте перед записью.",
+        (
+            "Свободные места и детали "
+            "ближайших поездок уточняйте "
+            "перед записью."
+        ),
+
         "",
 
-        "📩 Хотите подобрать поездку? "
-        "Напишите "
-        "<b>где вы отдыхаете + "
-        "сколько вас человек</b>.",
+        (
+            "📩 Хотите подобрать поездку? "
+            "Напишите "
+            "<b>где вы отдыхаете + "
+            "сколько вас человек</b>."
+        ),
 
         "👉 @VAbkhazii",
     ]
+
 
     return "\n".join(
         lines
     )
 
 
-def send_telegram(text):
+def send_telegram(
+    text
+):
 
     if not BOT_TOKEN:
 
@@ -720,33 +1671,41 @@ def send_telegram(text):
             "TELEGRAM_BOT_TOKEN is not set"
         )
 
+
     url = TG_URL.format(
         token=BOT_TOKEN
     )
 
-    payload = urllib.parse.urlencode({
 
-        "chat_id":
-            CHANNEL,
+    payload = urllib.parse.urlencode(
+        {
 
-        "text":
-            text,
+            "chat_id":
+                CHANNEL,
 
-        "parse_mode":
-            "HTML",
+            "text":
+                text,
 
-        "disable_web_page_preview":
-            "true",
+            "parse_mode":
+                "HTML",
 
-    }).encode(
+            "disable_web_page_preview":
+                "true",
+        }
+    ).encode(
         "utf-8"
     )
 
+
     req = urllib.request.Request(
+
         url,
+
         data=payload,
+
         method="POST"
     )
+
 
     with urllib.request.urlopen(
         req,
@@ -759,6 +1718,7 @@ def send_telegram(text):
             )
         )
 
+
     if not result.get(
         "ok"
     ):
@@ -767,6 +1727,7 @@ def send_telegram(text):
             f"Telegram error: {result}"
         )
 
+
     return result
 
 
@@ -774,17 +1735,23 @@ def choose_mode():
 
     if FORCE_MODE in {
         "morning",
-        "evening",
+        "evening"
     }:
 
         return FORCE_MODE
 
+
     hour = datetime.now(
-        ZoneInfo(TZ)
+        ZoneInfo(
+            TZ
+        )
     ).hour
 
+
     if hour >= 15:
+
         return "evening"
+
 
     return "morning"
 
@@ -802,7 +1769,9 @@ def main():
         in PLACES.items()
     }
 
+
     mode = choose_mode()
+
 
     if mode == "evening":
 
@@ -812,16 +1781,18 @@ def main():
 
     else:
 
-        marine = marine_now()
-
         post = build_morning_post(
+
             weather,
-            marine
+
+            marine_now()
         )
+
 
     print(
         post
     )
+
 
     send_telegram(
         post
@@ -829,4 +1800,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
