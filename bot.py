@@ -13,6 +13,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 
+# ============================================================
+# ОСНОВНЫЕ НАСТРОЙКИ
+# ============================================================
+
 TZ = "Europe/Moscow"
 
 CHANNEL = os.getenv(
@@ -33,6 +37,10 @@ FORCE_MODE = os.getenv(
 STATE_DIR = Path(".bot_state")
 STATE_FILE = STATE_DIR / "state.json"
 
+
+# ============================================================
+# КООРДИНАТЫ
+# ============================================================
 
 PLACES = {
 
@@ -69,6 +77,10 @@ SEA_POINT = (
 )
 
 
+# ============================================================
+# API
+# ============================================================
+
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast"
 )
@@ -83,6 +95,10 @@ TG_URL = (
 )
 
 
+# ============================================================
+# ПОИСК НОВОСТЕЙ
+# ============================================================
+
 NEWS_QUERIES = [
 
     (
@@ -93,12 +109,23 @@ NEWS_QUERIES = [
     ),
 
     (
-        "Абхазия Рица OR Новый Афон "
-        "OR Гагра OR Пицунда OR Сухум "
-        "OR Акармара OR Мзы when:2d"
+        "Абхазия Гагра OR Пицунда "
+        "OR Новый Афон OR Рица "
+        "OR Сухум OR Акармара "
+        "OR Мзы when:2d"
+    ),
+
+    (
+        "Абхазия путешествия OR отдых "
+        "OR достопримечательности "
+        "OR традиции OR кухня when:2d"
     ),
 ]
 
+
+# ============================================================
+# ПОГОДА
+# ============================================================
 
 WEATHER_TEXT = {
 
@@ -187,9 +214,11 @@ FOG_CODES = {
 }
 
 
-# Эти темы в канал автоматически
-# не допускаются.
-POLITICS = {
+# ============================================================
+# ФИЛЬТР НОВОСТЕЙ
+# ============================================================
+
+BAD_TOPICS = {
 
     "президент",
     "парламент",
@@ -221,12 +250,15 @@ POLITICS = {
     "криминал",
 
     "дтп",
+    "авария",
     "погиб",
+    "погибли",
     "ранен",
+    "убийств",
+    "пожар",
 }
 
 
-# Интересующие нас темы.
 GOOD_TOPICS = {
 
     "туризм",
@@ -280,15 +312,16 @@ EVENT_WORDS = {
     "концерт",
     "выставк",
     "ярмарк",
-
     "праздник",
     "турнир",
-    "форум",
-
     "мероприят",
     "открытие",
 }
 
+
+# ============================================================
+# ФАКТЫ
+# ============================================================
 
 FACTS = [
 
@@ -307,9 +340,9 @@ FACTS = [
 
     (
         "Акармара — бывший шахтёрский "
-        "посёлок в восточной части "
-        "Абхазии, известный необычной "
-        "архитектурой и горными пейзажами."
+        "посёлок Восточной Абхазии, "
+        "известный необычной архитектурой "
+        "и горными пейзажами."
     ),
 
     (
@@ -321,9 +354,8 @@ FACTS = [
 
     (
         "Пицундская сосна — один из "
-        "символов побережья Абхазии. "
-        "Её реликтовые рощи особенно "
-        "известны в районе Пицунды."
+        "природных символов абхазского "
+        "побережья."
     ),
 
     (
@@ -334,16 +366,16 @@ FACTS = [
     ),
 
     (
-        "Сухумский ботанический сад — "
-        "один из старейших ботанических "
-        "садов Кавказа."
+        "Сухумский ботанический сад "
+        "относится к числу старейших "
+        "ботанических садов Кавказа."
     ),
 
     (
-        "Высокогорное озеро Мзы лежит "
-        "значительно выше курортного "
-        "побережья, поэтому погода там "
-        "может сильно отличаться от Гагры."
+        "Озеро Мзы расположено высоко "
+        "в горах, поэтому погода там "
+        "может заметно отличаться "
+        "от побережья."
     ),
 
     (
@@ -351,8 +383,19 @@ FACTS = [
         "из крупнейших оборудованных "
         "для посещения пещер региона."
     ),
+
+    (
+        "Шакуранский водопад особенно "
+        "эффектно выглядит после дождей, "
+        "когда поток воды становится "
+        "значительно мощнее."
+    ),
 ]
 
+
+# ============================================================
+# МЕСТА ДНЯ
+# ============================================================
 
 PLACE_CARDS = [
 
@@ -361,10 +404,10 @@ PLACE_CARDS = [
 
         (
             "Станция Псырцха в Новом Афоне "
-            "стоит прямо среди зелени и воды. "
-            "Сюда стоит зайти не только ради "
-            "фотографии: место удобно совместить "
-            "с прогулкой по Новому Афону."
+            "расположена среди зелени и воды. "
+            "Это место удобно совместить "
+            "с прогулкой по исторической "
+            "части Нового Афона."
         )
     ),
 
@@ -375,9 +418,7 @@ PLACE_CARDS = [
             "Акармара — необычное место "
             "Восточной Абхазии с атмосферной "
             "архитектурой, горами и дорогой "
-            "к водопадам. Хороший вариант "
-            "для тех, кто уже видел "
-            "классические маршруты."
+            "к живописным водопадам."
         )
     ),
 
@@ -386,10 +427,10 @@ PLACE_CARDS = [
 
         (
             "Шакуранский водопад находится "
-            "в живописном ущелье. Особенно "
-            "эффектно место выглядит после "
-            "дождей, когда поток становится "
-            "мощнее."
+            "в живописном ущелье. После дождей "
+            "поток становится мощнее, "
+            "а окружающий ландшафт выглядит "
+            "особенно впечатляюще."
         )
     ),
 
@@ -398,22 +439,37 @@ PLACE_CARDS = [
 
         (
             "Мзы — высокогорное озеро "
-            "с совсем другим климатом, "
+            "с совершенно другим климатом, "
             "чем на побережье. Для поездки "
-            "нужна удобная обувь и готовность "
-            "к быстрой смене погоды."
+            "лучше брать удобную обувь "
+            "и лёгкую тёплую одежду."
+        )
+    ),
+
+    (
+        "Озеро Амткел",
+
+        (
+            "Амткел — одно из необычных "
+            "горных озёр Абхазии. Место "
+            "подойдёт тем, кто хочет увидеть "
+            "менее туристическую сторону страны."
         )
     ),
 ]
 
+
+# ============================================================
+# СОВЕТЫ
+# ============================================================
 
 TIPS = [
 
     (
         "В горы лучше брать лёгкую ветровку "
         "даже в тёплый день: температура "
-        "на высоте заметно ниже, чем "
-        "на побережье."
+        "на высоте заметно ниже, "
+        "чем на побережье."
     ),
 
     (
@@ -432,11 +488,20 @@ TIPS = [
     (
         "После дождей водопады часто "
         "выглядят эффектнее, но тропы "
-        "могут быть скользкими — "
-        "это стоит учитывать."
+        "могут быть скользкими."
+    ),
+
+    (
+        "Даже если на побережье солнечно, "
+        "погода в горах может измениться "
+        "за короткое время."
     ),
 ]
 
+
+# ============================================================
+# ГАСТРОНОМИЯ
+# ============================================================
 
 FOOD = [
 
@@ -453,22 +518,33 @@ FOOD = [
     ),
 
     (
-        "В сезон стоит искать местные "
-        "фрукты и цитрусовые — вкус у них "
-        "часто заметно отличается "
-        "от магазинных."
+        "В сезон обязательно стоит "
+        "попробовать местные фрукты "
+        "и цитрусовые."
+    ),
+
+    (
+        "Абхазская кухня хорошо сочетается "
+        "с большим количеством свежей зелени, "
+        "домашнего сыра и острых соусов."
     ),
 ]
 
 
+# ============================================================
+# ВРЕМЯ
+# ============================================================
+
 def now_local():
 
     return datetime.now(
-        ZoneInfo(
-            TZ
-        )
+        ZoneInfo(TZ)
     )
 
+
+# ============================================================
+# HTTP
+# ============================================================
 
 def get_json(
     base_url,
@@ -478,9 +554,7 @@ def get_json(
     url = (
         base_url
         + "?"
-        + urllib.parse.urlencode(
-            params
-        )
+        + urllib.parse.urlencode(params)
     )
 
     request = urllib.request.Request(
@@ -489,7 +563,7 @@ def get_json(
 
         headers={
             "User-Agent":
-                "VAbkhaziiBot/4.0"
+                "VAbkhaziiBot/5.0"
         }
     )
 
@@ -499,7 +573,6 @@ def get_json(
     ) as response:
 
         return json.loads(
-
             response.read().decode(
                 "utf-8"
             )
@@ -517,8 +590,9 @@ def get_text(url):
             "User-Agent":
                 (
                     "Mozilla/5.0 "
-                    "(compatible; "
-                    "VAbkhaziiBot/4.0)"
+                    "(Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 "
+                    "Chrome/120 Safari/537.36"
                 ),
 
             "Accept-Language":
@@ -539,6 +613,10 @@ def get_text(url):
             )
         )
 
+
+# ============================================================
+# ПОГОДА
+# ============================================================
 
 def weather_for(
     lat,
@@ -584,13 +662,8 @@ def weather_for(
     )
 
 
-    current = data[
-        "current"
-    ]
-
-    daily = data[
-        "daily"
-    ]
+    current = data["current"]
+    daily = data["daily"]
 
 
     days = []
@@ -602,46 +675,34 @@ def weather_for(
             {
 
                 "date":
-                    daily[
-                        "time"
-                    ][
-                        index
-                    ],
+                    daily["time"][index],
 
                 "code":
                     int(
                         daily[
                             "weather_code"
-                        ][
-                            index
-                        ]
+                        ][index]
                     ),
 
                 "max":
                     round(
                         daily[
                             "temperature_2m_max"
-                        ][
-                            index
-                        ]
+                        ][index]
                     ),
 
                 "min":
                     round(
                         daily[
                             "temperature_2m_min"
-                        ][
-                            index
-                        ]
+                        ][index]
                     ),
 
                 "rain_prob":
                     int(
                         daily[
                             "precipitation_probability_max"
-                        ][
-                            index
-                        ]
+                        ][index]
                         or 0
                     ),
 
@@ -649,9 +710,7 @@ def weather_for(
                     float(
                         daily[
                             "precipitation_sum"
-                        ][
-                            index
-                        ]
+                        ][index]
                         or 0
                     ),
 
@@ -659,9 +718,7 @@ def weather_for(
                     round(
                         daily[
                             "wind_speed_10m_max"
-                        ][
-                            index
-                        ]
+                        ][index]
                         or 0
                     ),
             }
@@ -705,6 +762,10 @@ def weather_for(
             days,
     }
 
+
+# ============================================================
+# МОРЕ
+# ============================================================
 
 def marine_now():
 
@@ -760,7 +821,7 @@ def marine_now():
     except Exception as exc:
 
         print(
-            "Marine API warning:",
+            "Marine warning:",
             exc
         )
 
@@ -775,22 +836,18 @@ def marine_now():
         }
 
 
+# ============================================================
+# ОЦЕНКА МАРШРУТОВ
+# ============================================================
+
 def route_status(
     name,
     day
 ):
 
-    code = day[
-        "code"
-    ]
-
-    rain = day[
-        "rain_prob"
-    ]
-
-    wind = day[
-        "wind_max"
-    ]
+    code = day["code"]
+    rain = day["rain_prob"]
+    wind = day["wind_max"]
 
 
     if name == "Мзы":
@@ -803,10 +860,7 @@ def route_status(
 
             return (
                 "🔴",
-                (
-                    "сегодня лучше выбрать "
-                    "другой маршрут"
-                ),
+                "сегодня лучше выбрать другой маршрут",
                 3
             )
 
@@ -846,8 +900,8 @@ def route_status(
             return (
                 "🔴",
                 (
-                    "лучше перенести ради "
-                    "безопасности и видов"
+                    "лучше выбрать другой день "
+                    "ради безопасности и видов"
                 ),
                 3
             )
@@ -863,8 +917,8 @@ def route_status(
             return (
                 "🟡",
                 (
-                    "ехать можно, но панорамы "
-                    "могут быть хуже"
+                    "ехать можно, "
+                    "но панорамы могут быть хуже"
                 ),
                 2
             )
@@ -873,8 +927,8 @@ def route_status(
         return (
             "🟢",
             (
-                "хороший вариант для "
-                "видов и фотографий"
+                "хороший вариант "
+                "для видов и фотографий"
             ),
             1
         )
@@ -906,10 +960,7 @@ def route_status(
 
             return (
                 "🟡",
-                (
-                    "можно, но учитывайте "
-                    "осадки"
-                ),
+                "можно, но учитывайте осадки",
                 2
             )
 
@@ -917,8 +968,8 @@ def route_status(
         return (
             "🟢",
             (
-                "хороший день для "
-                "Акармары и водопадов"
+                "хороший день "
+                "для Акармары и водопадов"
             ),
             1
         )
@@ -947,10 +998,7 @@ def route_status(
 
         return (
             "🟡",
-            (
-                "подойдёт, но возможны "
-                "осадки"
-            ),
+            "подойдёт, но возможны осадки",
             2
         )
 
@@ -982,13 +1030,9 @@ def choose_best(
     for name in candidates:
 
         day = (
-            weather[
-                name
-            ][
-                "days"
-            ][
-                day_index
-            ]
+            weather[name]
+            ["days"]
+            [day_index]
         )
 
 
@@ -1018,19 +1062,13 @@ def choose_best(
             status_score * 100
 
             + sensitivity
-            * day[
-                "rain_prob"
-            ]
+            * day["rain_prob"]
 
-            + day[
-                "rain_sum"
-            ] * 8
+            + day["rain_sum"] * 8
 
             + max(
                 0,
-                day[
-                    "wind_max"
-                ] - 18
+                day["wind_max"] - 18
             ) * 2
         )
 
@@ -1046,23 +1084,19 @@ def choose_best(
     scored.sort()
 
 
-    return scored[
-        0
-    ][
-        1
-    ]
+    return scored[0][1]
 
+
+# ============================================================
+# ФОРМАТИРОВАНИЕ
+# ============================================================
 
 def fmt_num(value):
 
     if value is None:
-
         return None
 
-
-    return (
-        f"{float(value):.1f}"
-    )
+    return f"{float(value):.1f}"
 
 
 def date_title(
@@ -1108,9 +1142,10 @@ def sea_line(
     if sea_temp is not None:
 
         parts.append(
-
-            f"вода около "
-            f"<b>+{fmt_num(sea_temp)}°C</b>"
+            (
+                f"вода около "
+                f"<b>+{fmt_num(sea_temp)}°C</b>"
+            )
         )
 
 
@@ -1118,41 +1153,32 @@ def sea_line(
 
         if wave < 0.4:
 
-            state = (
-                "море спокойное"
-            )
+            state = "море спокойное"
 
         elif wave < 0.8:
 
-            state = (
-                "небольшая волна"
-            )
+            state = "небольшая волна"
 
         elif wave < 1.4:
 
-            state = (
-                "заметная волна"
-            )
+            state = "заметная волна"
 
         else:
 
-            state = (
-                "море волнуется"
-            )
+            state = "море волнуется"
 
 
         parts.append(
-
-            f"{state}, около "
-            f"<b>{fmt_num(wave)} м</b>"
+            (
+                f"{state}, около "
+                f"<b>{fmt_num(wave)} м</b>"
+            )
         )
 
 
     return (
         "🌊 Море: "
-        + ", ".join(
-            parts
-        )
+        + ", ".join(parts)
         + "."
     )
 
@@ -1176,90 +1202,9 @@ def clean_text(text):
     ).strip()
 
 
-def is_allowed_news(
-    title
-):
-
-    text = title.lower()
-
-
-    if "абхаз" not in text:
-
-        return False
-
-
-    if any(
-
-        word in text
-
-        for word
-        in POLITICS
-
-    ):
-
-        return False
-
-
-    return any(
-
-        word in text
-
-        for word
-        in GOOD_TOPICS
-    )
-
-
-def news_score(
-    title
-):
-
-    text = title.lower()
-
-
-    score = sum(
-
-        3
-
-        for word
-        in GOOD_TOPICS
-
-        if word in text
-    )
-
-
-    score += sum(
-
-        2
-
-        for word
-        in EVENT_WORDS
-
-        if word in text
-    )
-
-
-    if any(
-
-        place in text
-
-        for place in (
-
-            "рица",
-            "новый афон",
-            "гагра",
-            "пицунд",
-            "сухум",
-            "акармар",
-            "мзы",
-        )
-
-    ):
-
-        score += 4
-
-
-    return score
-
+# ============================================================
+# СОСТОЯНИЕ / АНТИ-ПОВТОР
+# ============================================================
 
 def load_state():
 
@@ -1295,11 +1240,8 @@ def save_state(
     STATE_FILE.write_text(
 
         json.dumps(
-
             state,
-
             ensure_ascii=False,
-
             indent=2
         ),
 
@@ -1307,9 +1249,7 @@ def save_state(
     )
 
 
-def item_hash(
-    text
-):
+def item_hash(text):
 
     return hashlib.sha256(
 
@@ -1317,14 +1257,91 @@ def item_hash(
             "utf-8"
         )
 
-    ).hexdigest()[
-        :16
-    ]
+    ).hexdigest()[:16]
 
 
-def google_news_rss_url(
-    query
-):
+# ============================================================
+# НОВОСТИ — ФИЛЬТР
+# ============================================================
+
+def is_allowed_news(title):
+
+    text = title.lower()
+
+
+    if "абхаз" not in text:
+
+        return False
+
+
+    if any(
+
+        word in text
+
+        for word in BAD_TOPICS
+
+    ):
+
+        return False
+
+
+    return any(
+
+        word in text
+
+        for word in GOOD_TOPICS
+    )
+
+
+def news_score(title):
+
+    text = title.lower()
+
+    score = 0
+
+
+    for word in GOOD_TOPICS:
+
+        if word in text:
+
+            score += 3
+
+
+    for word in EVENT_WORDS:
+
+        if word in text:
+
+            score += 2
+
+
+    important_places = (
+
+        "рица",
+        "новый афон",
+        "гагра",
+        "пицунд",
+        "сухум",
+        "акармар",
+        "мзы",
+    )
+
+
+    if any(
+        place in text
+        for place in important_places
+    ):
+
+        score += 4
+
+
+    return score
+
+
+# ============================================================
+# GOOGLE NEWS RSS
+# ============================================================
+
+def google_news_rss_url(query):
 
     return (
 
@@ -1350,7 +1367,7 @@ def google_news_rss_url(
     )
 
 
-def find_fresh_news(
+def collect_news_candidates(
     state
 ):
 
@@ -1362,21 +1379,22 @@ def find_fresh_news(
     )
 
 
-    candidates = []
+    result = []
 
 
     for query in NEWS_QUERIES:
 
         try:
 
-            root = ET.fromstring(
-
-                get_text(
-
-                    google_news_rss_url(
-                        query
-                    )
+            xml_text = get_text(
+                google_news_rss_url(
+                    query
                 )
+            )
+
+
+            root = ET.fromstring(
+                xml_text
             )
 
 
@@ -1421,9 +1439,13 @@ def find_fresh_news(
             if (
                 not title
                 or not link
-                or not is_allowed_news(
-                    title
-                )
+            ):
+
+                continue
+
+
+            if not is_allowed_news(
+                title
             ):
 
                 continue
@@ -1467,9 +1489,7 @@ def find_fresh_news(
 
                 published = (
                     published.astimezone(
-                        ZoneInfo(
-                            TZ
-                        )
+                        ZoneInfo(TZ)
                     )
                 )
 
@@ -1484,7 +1504,7 @@ def find_fresh_news(
                 continue
 
 
-            candidates.append(
+            result.append(
                 {
 
                     "title":
@@ -1507,32 +1527,39 @@ def find_fresh_news(
             )
 
 
-    if not candidates:
+    # удаляем дубликаты
+    unique = {}
 
-        return None
+    for item in result:
+
+        unique[
+            item["hash"]
+        ] = item
 
 
-    candidates.sort(
+    result = list(
+        unique.values()
+    )
+
+
+    result.sort(
 
         key=lambda item: (
 
-            item[
-                "score"
-            ],
-
-            item[
-                "published"
-            ]
+            item["score"],
+            item["published"]
         ),
 
         reverse=True
     )
 
 
-    return candidates[
-        0
-    ]
+    return result
 
+
+# ============================================================
+# ИЗВЛЕЧЕНИЕ ТЕКСТА НОВОСТИ
+# ============================================================
 
 def extract_meta(
     page,
@@ -1579,21 +1606,130 @@ def extract_meta(
         if match:
 
             return clean_text(
-                match.group(
-                    1
-                )
+                match.group(1)
             )
 
 
     return None
 
 
-def trim_summary(
-    text
+def extract_article_paragraphs(
+    page
 ):
 
-    text = clean_text(
-        text
+    page = re.sub(
+
+        r"<script\b[^>]*>.*?</script>",
+
+        " ",
+
+        page,
+
+        flags=re.I | re.S
+    )
+
+
+    page = re.sub(
+
+        r"<style\b[^>]*>.*?</style>",
+
+        " ",
+
+        page,
+
+        flags=re.I | re.S
+    )
+
+
+    paragraphs = re.findall(
+
+        r"<p\b[^>]*>(.*?)</p>",
+
+        page,
+
+        flags=re.I | re.S
+    )
+
+
+    result = []
+
+
+    bad_fragments = (
+
+        "cookie",
+        "подписаться",
+        "подписывайтесь",
+        "реклама",
+        "читайте также",
+        "все права защищены",
+        "используя сайт",
+        "политика конфиденциальности",
+        "javascript",
+        "яндекс дзен",
+        "скачайте приложение",
+        "войти в аккаунт",
+    )
+
+
+    for paragraph in paragraphs:
+
+        text = clean_text(
+            paragraph
+        )
+
+
+        if len(text) < 70:
+
+            continue
+
+
+        if len(text) > 1200:
+
+            continue
+
+
+        lower = text.lower()
+
+
+        if any(
+
+            bad in lower
+
+            for bad in bad_fragments
+
+        ):
+
+            continue
+
+
+        if text in result:
+
+            continue
+
+
+        result.append(
+            text
+        )
+
+
+        if len(result) >= 10:
+
+            break
+
+
+    return result
+
+
+# ============================================================
+# РАСКРЫТАЯ НОВОСТЬ
+# ============================================================
+
+def make_news_digest(
+    paragraphs
+):
+
+    source_text = " ".join(
+        paragraphs
     )
 
 
@@ -1601,90 +1737,101 @@ def trim_summary(
 
         r"(?<=[.!?])\s+",
 
-        text
+        source_text
     )
 
 
-    chosen = []
+    selected = []
 
-    total = 0
+    total_length = 0
 
 
     for sentence in sentences:
 
-        sentence = sentence.strip()
-
-
-        if len(
+        sentence = clean_text(
             sentence
-        ) < 25:
+        )
+
+
+        if len(sentence) < 45:
+
+            continue
+
+
+        if len(sentence) > 360:
+
+            continue
+
+
+        lower = sentence.lower()
+
+
+        if any(
+
+            word in lower
+
+            for word in BAD_TOPICS
+
+        ):
 
             continue
 
 
         if (
-            total
-            + len(
-                sentence
-            )
-            > 520
+            total_length
+            + len(sentence)
+            > 1000
         ):
 
             break
 
 
-        chosen.append(
+        selected.append(
             sentence
         )
 
 
-        total += (
-            len(
-                sentence
-            )
+        total_length += (
+            len(sentence)
             + 1
         )
 
 
-        if len(
-            chosen
-        ) >= 3:
+        if len(selected) >= 5:
 
             break
 
 
-    if chosen:
+    # Один абзац или одно предложение
+    # не считаем нормальной новостью.
+    if len(selected) < 3:
 
-        result = " ".join(
-            chosen
-        )
-
-    else:
-
-        result = text[
-            :500
-        ].strip()
+        return None
 
 
-    if len(
-        result
-    ) > 520:
+    digest = " ".join(
+        selected
+    )
 
-        result = (
-            result[
-                :517
-            ].rstrip()
+
+    if len(digest) > 1000:
+
+        digest = (
+
+            digest[:997]
+            .rsplit(
+                " ",
+                1
+            )[0]
+
             + "…"
         )
 
 
-    return result
+    return digest
 
 
-def article_summary(
-    url,
-    fallback_title
-):
+def article_summary(url):
 
     try:
 
@@ -1693,7 +1840,27 @@ def article_summary(
         )
 
 
-        summary = (
+        paragraphs = (
+            extract_article_paragraphs(
+                page
+            )
+        )
+
+
+        digest = make_news_digest(
+            paragraphs
+        )
+
+
+        if digest:
+
+            return digest
+
+
+        # Резервный вариант:
+        # пытаемся получить расширенное
+        # описание страницы.
+        description = (
 
             extract_meta(
                 page,
@@ -1710,83 +1877,44 @@ def article_summary(
         )
 
 
-        if (
-            summary
-            and len(
-                summary
-            ) >= 80
-        ):
+        if description:
 
-            return trim_summary(
-                summary
+            description = clean_text(
+                description
             )
 
 
-        paragraphs = re.findall(
+            sentences = re.split(
 
-            r"<p\b[^>]*>(.*?)</p>",
+                r"(?<=[.!?])\s+",
 
-            page,
-
-            re.I | re.S
-        )
-
-
-        clean_paragraphs = []
-
-
-        for paragraph in paragraphs:
-
-            text = clean_text(
-                paragraph
+                description
             )
 
 
-            if (
-                70
-                <= len(
-                    text
+            usable = [
+
+                sentence.strip()
+
+                for sentence
+                in sentences
+
+                if len(
+                    sentence.strip()
+                ) >= 40
+            ]
+
+
+            if len(usable) >= 2:
+
+                text = " ".join(
+                    usable[:4]
                 )
-                <= 700
-            ):
-
-                lower = text.lower()
 
 
-                if not any(
+                if len(text) >= 180:
 
-                    bad in lower
-
-                    for bad in (
-
-                        "cookie",
-                        "подпис",
-                        "реклам",
-                        "javascript",
-                    )
-
-                ):
-
-                    clean_paragraphs.append(
-                        text
-                    )
-
-
-            if len(
-                clean_paragraphs
-            ) >= 3:
-
-                break
-
-
-        if clean_paragraphs:
-
-            return trim_summary(
-
-                " ".join(
-                    clean_paragraphs
-                )
-            )
+                    return text[:1000]
 
 
     except Exception as exc:
@@ -1797,19 +1925,18 @@ def article_summary(
         )
 
 
-    return trim_summary(
-        fallback_title
-    )
+    return None
 
+
+# ============================================================
+# РЕЗЕРВНЫЕ РУБРИКИ
+# ============================================================
 
 def fallback_block(
     state
 ):
 
-    today = (
-        now_local()
-        .date()
-    )
+    today = now_local().date()
 
 
     options = [
@@ -1853,11 +1980,8 @@ def fallback_block(
         for option
         in options
 
-        if option[
-            0
-        ] not in recent[
-            -2:
-        ]
+        if option[0]
+        not in recent[-2:]
     ]
 
 
@@ -1869,27 +1993,19 @@ def fallback_block(
     block_type, heading, pool = (
 
         allowed[
-
             today.toordinal()
-            % len(
-                allowed
-            )
+            % len(allowed)
         ]
     )
 
 
     index = (
-
         today.toordinal()
-        % len(
-            pool
-        )
+        % len(pool)
     )
 
 
-    item = pool[
-        index
-    ]
+    item = pool[index]
 
 
     state.setdefault(
@@ -1902,11 +2018,11 @@ def fallback_block(
 
     state[
         "recent_blocks"
-    ] = state[
-        "recent_blocks"
-    ][
-        -10:
-    ]
+    ] = (
+        state[
+            "recent_blocks"
+        ][-10:]
+    )
 
 
     if block_type == "place":
@@ -1916,72 +2032,76 @@ def fallback_block(
 
         return (
 
-            f"{heading}\n"
-            f"<b>{html.escape(name)}</b>\n"
+            f"{heading}\n\n"
+
+            f"<b>"
+            f"{html.escape(name)}"
+            f"</b>\n\n"
+
             f"{html.escape(text)}"
         )
 
 
     return (
 
-        f"{heading}\n"
+        f"{heading}\n\n"
 
-        + html.escape(
-            item
-        )
+        + html.escape(item)
     )
 
+
+# ============================================================
+# ВЫБОР НОВОСТИ
+# ============================================================
 
 def interesting_block(
     state
 ):
 
-    news = find_fresh_news(
-        state
+    candidates = (
+        collect_news_candidates(
+            state
+        )
     )
 
 
-    if news:
+    # Пробуем до 6 свежих новостей.
+    for news in candidates[:6]:
 
-        summary = article_summary(
-
-            news[
-                "url"
-            ],
-
-            news[
-                "title"
-            ]
-        )
-
-
+        # Сразу запоминаем, что
+        # эту новость уже проверяли.
         state.setdefault(
-
             "used_news",
             []
-
         ).append(
-
-            news[
-                "hash"
-            ]
+            news["hash"]
         )
 
 
         state[
             "used_news"
-        ] = state[
-            "used_news"
-        ][
-            -30:
-        ]
+        ] = (
+            state[
+                "used_news"
+            ][-40:]
+        )
+
+
+        summary = article_summary(
+            news["url"]
+        )
+
+
+        # Не получилось раскрыть —
+        # идём к следующей.
+        if not summary:
+
+            continue
 
 
         state.setdefault(
-
             "recent_blocks",
             []
-
         ).append(
             "news"
         )
@@ -1989,11 +2109,11 @@ def interesting_block(
 
         state[
             "recent_blocks"
-        ] = state[
-            "recent_blocks"
-        ][
-            -10:
-        ]
+        ] = (
+            state[
+                "recent_blocks"
+            ][-10:]
+        )
 
 
         if any(
@@ -2009,34 +2129,40 @@ def interesting_block(
         ):
 
             heading = (
-                "🎉 <b>СОБЫТИЕ / "
-                "НОВОСТЬ ДНЯ</b>"
+                "🎉 <b>ЧТО ИНТЕРЕСНОГО "
+                "В АБХАЗИИ</b>"
             )
 
         else:
 
             heading = (
-                "📰 <b>ЧТО ИНТЕРЕСНОГО "
-                "В АБХАЗИИ</b>"
+                "📰 <b>НОВОСТЬ ДНЯ</b>"
             )
 
 
         return (
 
-            f"{heading}\n"
+            f"{heading}\n\n"
 
             f"<b>"
             f"{html.escape(news['title'])}"
-            f"</b>\n"
+            f"</b>\n\n"
 
             f"{html.escape(summary)}"
         )
 
 
+    # Если ни одна новость
+    # нормально не раскрылась —
+    # не показываем голый заголовок.
     return fallback_block(
         state
     )
 
+
+# ============================================================
+# УТРЕННИЙ ПОСТ
+# ============================================================
 
 def build_morning_post(
     weather,
@@ -2049,11 +2175,11 @@ def build_morning_post(
     ]
 
 
-    today = coast[
-        "days"
-    ][
-        0
-    ]
+    today = (
+        coast[
+            "days"
+        ][0]
+    )
 
 
     current = coast[
@@ -2068,7 +2194,6 @@ def build_morning_post(
 
 
     weather_desc = (
-
         WEATHER_TEXT.get(
 
             today[
@@ -2141,9 +2266,7 @@ def build_morning_post(
                 name
             ][
                 "days"
-            ][
-                0
-            ]
+            ][0]
         )
 
 
@@ -2222,6 +2345,10 @@ def build_morning_post(
     )
 
 
+# ============================================================
+# ВЕЧЕРНИЙ ПОСТ
+# ============================================================
+
 def build_evening_post(
     weather
 ):
@@ -2231,11 +2358,11 @@ def build_evening_post(
     ]
 
 
-    tomorrow = coast[
-        "days"
-    ][
-        1
-    ]
+    tomorrow = (
+        coast[
+            "days"
+        ][1]
+    )
 
 
     best = choose_best(
@@ -2245,7 +2372,6 @@ def build_evening_post(
 
 
     weather_desc = (
-
         WEATHER_TEXT.get(
 
             tomorrow[
@@ -2307,9 +2433,7 @@ def build_evening_post(
                 name
             ][
                 "days"
-            ][
-                1
-            ]
+            ][1]
         )
 
 
@@ -2360,6 +2484,8 @@ def build_evening_post(
             "сколько вас человек</b>."
         ),
 
+        "",
+
         "👉 @VAbkhazii",
     ]
 
@@ -2368,6 +2494,10 @@ def build_evening_post(
         lines
     )
 
+
+# ============================================================
+# TELEGRAM
+# ============================================================
 
 def send_telegram(
     text
@@ -2433,11 +2563,16 @@ def send_telegram(
     ):
 
         raise RuntimeError(
-
-            f"Telegram error: "
-            f"{result}"
+            f"Telegram error: {result}"
         )
 
+
+    return result
+
+
+# ============================================================
+# РЕЖИМ ПОСТА
+# ============================================================
 
 def choose_mode():
 
@@ -2456,6 +2591,10 @@ def choose_mode():
 
     return "morning"
 
+
+# ============================================================
+# ЗАПУСК
+# ============================================================
 
 def main():
 
@@ -2482,6 +2621,7 @@ def main():
         post = build_evening_post(
             weather
         )
+
 
     else:
 
