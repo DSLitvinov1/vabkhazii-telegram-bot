@@ -2,6 +2,15 @@ name: VAbkhazii Daily Post
 
 on:
   workflow_dispatch:
+    inputs:
+      post_mode:
+        description: "Тип публикации"
+        required: false
+        default: "morning"
+        type: choice
+        options:
+          - morning
+          - evening
 
 jobs:
   publish:
