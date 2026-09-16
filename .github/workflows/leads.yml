@@ -11,16 +11,30 @@ jobs:
       - name: Download repository
         uses: actions/checkout@v4
 
+      - name: Restore leads history
+        uses: actions/cache@v4
+        with:
+          path: .lead_state
+          key: vabkhazii-leads-${{ github.run_id }}
+          restore-keys: |
+            vabkhazii-leads-
+
       - name: Install Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Install dependencies
+        run: pip install telethon
+
       - name: Check leads bot code
         run: python -m py_compile lead_bot.py
 
-      - name: Setup or test private leads bot
+      - name: Search Telegram leads
         env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
         run: python lead_bot.py
