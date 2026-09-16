@@ -1,0 +1,26 @@
+name: VAbkhazii Leads Bot
+
+on:
+  workflow_dispatch:
+
+jobs:
+  leads:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check leads bot code
+        run: python -m py_compile lead_bot.py
+
+      - name: Setup or test private leads bot
+        env:
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
+        run: python lead_bot.py
