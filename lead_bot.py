@@ -44,6 +44,7 @@ CHAT_SCAN_LIMIT = 300
 MAX_LEADS_PER_RUN = 20
 MIN_SCORE_TO_SEND = 28
 QUERY_DELAY_SECONDS = 0.20
+CHAIN_WINDOW_HOURS = 6
 
 # Автопоиск новых публичных туристических групп Telegram.
 DISCOVERY_ENABLED = True
@@ -546,6 +547,61 @@ ADVICE_RESPONSE_PHRASES = [
     "лучше ехать", "лучше поехать", "на каждой маршрутке", "вам нужен",
 ]
 
+# Жёсткие признаки ответа/пересказа чужого опыта. Такие сообщения не являются
+# собственной новой заявкой пользователя, если в них нет нового явного запроса услуги.
+REPLY_EXPERIENCE_PHRASES = [
+    "не заказывала", "не заказывал", "не заказывали",
+    "я слышала", "я слышал", "мы слышали",
+    "мне говорили", "нам говорили", "мне сказали", "нам сказали",
+    "узнавала стоимость", "узнавал стоимость", "узнавали стоимость",
+    "мы брали", "мы платили", "нам обошлось", "нам стоило",
+    "знакомые ездили", "друзья ездили",
+]
+
+PAST_TRIP_PHRASES = [
+    "год назад", "года назад", "лет назад",
+    "в прошлом году", "прошлым летом", "прошлой зимой",
+    "раньше ездили", "раньше были", "уже были в абхазии",
+    "были в абхазии в прошлом", "ездили в абхазию в прошлом",
+]
+
+FUTURE_TRIP_PHRASES = [
+    "собираюсь", "собираемся", "планирую", "планируем",
+    "поеду", "поедем", "едем в абхазию", "летим", "прилетаем", "приезжаем",
+    "буду в абхазии", "будем в абхазии", "хочу приехать", "хотим приехать",
+    "хочу в абхазию", "хотим в абхазию", "на выходных", "в выходные",
+    "на следующей неделе", "в отпуск",
+    "в сентябре", "в октябре", "в ноябре", "в декабре",
+    "в январе", "в феврале", "в марте", "в апреле", "в мае",
+    "в июне", "в июле", "в августе",
+]
+
+PRICE_RESEARCH_PHRASES = [
+    "кто-то заказывал", "кто то заказывал", "кто заказывал",
+    "кто-нибудь заказывал", "кто нибудь заказывал",
+    "какие суммы", "какая сумма", "по какой цене",
+    "кто сколько платил", "сколько платили", "сколько брали",
+    "хочу узнать стоимость", "хотим узнать стоимость",
+]
+
+NONSTANDARD_DRIVER_PHRASES = [
+    "человек с правами", "нужен человек с правами",
+    "водитель до границы", "до границы а там другой",
+    "до границы, а там другой", "за рулем поедет", "за рулём поедет",
+]
+
+EXECUTION_REQUEST_PHRASES = [
+    "кто отвезет", "кто отвезёт", "кто довезет", "кто довезёт",
+    "кто заберет", "кто заберёт", "кто встретит", "кто свозит",
+    "кто может отвезти", "кто может забрать", "кто сможет отвезти",
+    "кто сможет забрать", "можете отвезти", "можете забрать",
+    "нужно отвезти", "нужно забрать", "нужно довезти",
+    "хочу заказать трансфер", "хотим заказать трансфер",
+    "хочу заказать экскурсию", "хотим заказать экскурсию",
+    "нужен трансфер", "нужна машина", "нужна экскурсия", "нужен гид",
+]
+
+
 BUYER_INTENT_PHRASES = [
     # Явный запрос услуги от первого лица / своей компании.
     "мне нужен", "мне нужна", "нам нужен", "нам нужна", "нам нужно",
@@ -607,6 +663,7 @@ EXCURSION_PHRASES = [
 CITIES = {
     "Цандрыпш": ["цандрыпш", "гантиади"],
     "Гагра": ["гагра", "гагре", "гагры", "гагру"],
+    "Лдза": ["лдза", "лидза"],
     "Пицунда": ["пицунда", "пицунде", "пицунды", "пицунду"],
     "Гудаута": ["гудаута", "гудауте", "гудауты", "гудауту"],
     "Новый Афон": ["новый афон", "новом афоне", "нового афона", "новому афону"],
@@ -632,6 +689,7 @@ CITIES = {
 
 SPECIAL_PLACES = {
     "Аэропорт Сочи": ["аэропорт сочи", "аэропорт адлер", "аэропорта сочи", "аэропорту сочи"],
+    "Аэропорт Сухум": ["аэропорт сухум", "аэропорта сухум", "аэропорт сухуми", "аэропорта сухуми"],
     "Псоу": ["псоу", "граница абхазии", "границы абхазии", "границе абхазии"],
     "Ж/д вокзал Адлер": ["вокзал адлер", "жд адлер", "ж/д адлер", "жд вокзал адлер", "ж/д вокзал адлер"],
     "Ж/д вокзал Сочи": ["вокзал сочи", "жд сочи", "ж/д сочи", "жд вокзал сочи", "ж/д вокзал сочи"],
@@ -665,7 +723,7 @@ def load_state():
 
 def save_state(state):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    state["seen"] = state.get("seen", [])[-3000:]
+    state["seen"] = list(dict.fromkeys(state.get("seen", [])))[-3000:]
     state["external_seen"] = state.get("external_seen", [])[-7000:]
     STATE_FILE.write_text(
         json.dumps(state, ensure_ascii=False, indent=2),
@@ -766,14 +824,17 @@ def looks_like_broadcast_content(text):
 
 
 def looks_like_advice_response(text):
-    lower = text.lower()
+    lower = normalize(text).lower()
+
+    # Чужой опыт / ответ другому человеку блокируем даже при наличии вопросительного
+    # знака в конце. Исключение — если в том же сообщении появился новый собственный
+    # запрос на конкретное выполнение услуги.
+    reply_experience = any(phrase in lower for phrase in REPLY_EXPERIENCE_PHRASES)
+    if reply_experience and not has_execution_request(text):
+        return True
+
     hits = sum(1 for phrase in ADVICE_RESPONSE_PHRASES if phrase in lower)
 
-    # Реальный вопрос пользователя не режем только из-за слов "на маршрутке" и т.п.
-    if "?" in text:
-        return False
-
-    # Явное первое лицо означает, что человек говорит о своей потребности.
     first_person_need = any(
         phrase in lower
         for phrase in [
@@ -784,7 +845,95 @@ def looks_like_advice_response(text):
     if first_person_need:
         return False
 
+    # Настоящий вопрос пользователя не режем только по одному навигационному слову,
+    # но два и более признака явного совета считаем ответом другому туристу.
+    if "?" in text and hits < 2:
+        return False
+
     return hits >= 2
+
+
+def has_future_trip_signal(text):
+    lower = normalize(text).lower()
+    if any(phrase in lower for phrase in FUTURE_TRIP_PHRASES):
+        return True
+    # Конкретная ближайшая дата тоже означает будущую/текущую поездку.
+    date_hint = detect_date_hint(text)
+    return bool(date_hint)
+
+
+def looks_like_past_trip(text):
+    lower = normalize(text).lower()
+
+    # Новый явный заказ услуги всегда важнее упоминания старого опыта.
+    if has_execution_request(text):
+        return False
+
+    # Сильная будущая формулировка может сосуществовать с рассказом о прошлом:
+    # «были в прошлом году, в октябре едем снова». В этом случае не режем.
+    explicit_future = any(phrase in lower for phrase in FUTURE_TRIP_PHRASES)
+
+    strong_past = any(phrase in lower for phrase in PAST_TRIP_PHRASES)
+    past_verb = re.search(
+        r"\b(?:я|мы)\s+(?:был|была|были|ездил|ездила|ездили)\b",
+        lower,
+    )
+    past_time = re.search(
+        r"\b(?:\d+|один|два|три|четыре|пять)\s+(?:год|года|лет|месяц|месяца|месяцев)\s+назад\b",
+        lower,
+    )
+
+    if explicit_future and not past_time:
+        return False
+    return bool(strong_past or (past_verb and (past_time or "раньше" in lower or "прошл" in lower)))
+
+
+def is_price_research_request(text):
+    lower = normalize(text).lower()
+    has_service = any(marker in lower for marker in SERVICE_NOUNS)
+    return has_service and any(phrase in lower for phrase in PRICE_RESEARCH_PHRASES)
+
+
+def is_nonstandard_driver_request(text):
+    lower = normalize(text).lower()
+    return any(phrase in lower for phrase in NONSTANDARD_DRIVER_PHRASES)
+
+
+def has_execution_request(text):
+    lower = normalize(text).lower()
+    if any(phrase in lower for phrase in EXECUTION_REQUEST_PHRASES):
+        return True
+    if re.search(r"\bкто\b.{0,35}\b(?:сможет|может)?\s*(?:отвез|довез|забер|встрет|своз)", lower):
+        return True
+    return False
+
+
+def is_chain_context_message(text, source_context=""):
+    """Сообщение само может быть не лидом, но содержать детали соседней заявки автора."""
+    lower = normalize(text).lower()
+    if looks_like_past_trip(text) or looks_like_advice_response(text):
+        return False
+    if looks_like_job(text) or looks_like_seller(text) or is_cargo_request(text):
+        return False
+
+    has_geo_context = has_abkhazia_context(text) or has_abkhazia_source_context(source_context)
+    if not has_geo_context:
+        return False
+
+    detail = any([
+        bool(detect_people(text)),
+        detect_children(text),
+        detect_baggage(text),
+        bool(detect_date_hint(text)),
+        bool(detect_time_hint(text)),
+        bool(detect_urgency(text)),
+        bool(detect_all_places(text)),
+        bool(detect_route(text)),
+        any(marker in lower for marker in SERVICE_NOUNS),
+        any(marker in lower for marker in PLANNING_INTENT_PHRASES),
+        has_future_trip_signal(text),
+    ])
+    return detail
 
 
 def looks_like_commercial_sender(sender, text):
@@ -1152,8 +1301,8 @@ def detect_route(text):
 def detect_people(text):
     lower = text.lower()
     patterns = [
-        r"\bнас\s+(\d{1,2})\b",
-        r"\b(\d{1,2})\s*человек\b",
+        r"\bнас\s+(\d{1,2})(?:\s*(?:человек(?:а|ов)?|чел)|(?:ро|еро))?\b",
+        r"\b(\d{1,2})\s*человек(?:а|ов)?\b",
         r"\b(\d{1,2})\s*чел\b",
         r"\b(\d{1,2})\s*взросл",
         r"\bсемья\s+из\s+(\d{1,2})\b",
@@ -1175,6 +1324,9 @@ def detect_people(text):
         "нас трое": 3,
         "нас четверо": 4,
         "нас пятеро": 5,
+        "нас шестеро": 6,
+        "нас семеро": 7,
+        "нас восьмеро": 8,
     }
     for phrase, value in word_values.items():
         if phrase in lower:
@@ -1359,7 +1511,7 @@ def looks_like_route_discussion_only(text):
         return True
 
     # Фразы вида «150 км, это из Сухума до Сочи» — обычное обсуждение.
-    if re.search(r"\d{2,4}\s*км", lower) and not any(
+    if re.search(r"\b\d{2,4}\s*км\b", lower) and not any(
         word in lower for word in ["нуж", "ищ", "заказ", "кто может", "сколько стоит"]
     ):
         return True
@@ -1370,8 +1522,13 @@ def looks_like_route_discussion_only(text):
 def is_planning_request(text):
     lower = normalize(text).lower()
 
-    # Прямой заказ услуги всегда важнее planning.
     if has_explicit_service_request(text):
+        return False
+    if looks_like_past_trip(text) or looks_like_advice_response(text):
+        return False
+
+    # Planning теперь означает именно будущую/предстоящую поездку.
+    if not has_future_trip_signal(text):
         return False
 
     if any(phrase in lower for phrase in PLANNING_PHRASES):
@@ -1380,15 +1537,7 @@ def is_planning_request(text):
     if any(phrase in lower for phrase in PLANNING_INTENT_PHRASES):
         return True
 
-    # Будущая поездка + Абхазия/город = planning даже без точной ключевой фразы.
-    future_markers = [
-        "собираемся", "планируем", "поедем", "едем", "приезжаем", "прилетаем",
-        "будем", "хотим приехать", "хочу приехать", "на выходных", "в отпуск",
-        "в начале", "в конце", "в октябре", "в сентябре", "в ноябре",
-    ]
-    if any(marker in lower for marker in future_markers) and (
-        has_abkhazia_context(text) or detect_city(text) or detect_route(text)
-    ):
+    if has_abkhazia_context(text) or detect_city(text) or detect_route(text):
         return True
 
     return False
@@ -1507,39 +1656,37 @@ def detect_lead_type(text):
 def classify_lead_detailed(text, source_context=""):
     lower = normalize(text).lower()
 
-    # Возвращаем не только результат, но и причину отсева.
     if looks_like_job(text):
         return None, "job_or_vacancy"
-
     if looks_like_seller(text):
         return None, "seller_or_ad"
-
     if is_cargo_request(text):
         return None, "cargo_request"
-
     if looks_like_broadcast_content(text):
         return None, "broadcast_content"
-
+    if looks_like_past_trip(text):
+        return None, "past_trip_filtered"
     if looks_like_advice_response(text):
-        return None, "advice_response"
+        return None, "reply_advice_filtered"
 
     text_has_context = has_abkhazia_context(text)
     source_has_context = has_abkhazia_source_context(source_context)
     if not text_has_context and not source_has_context:
         return None, "no_abkhazia_context"
 
-    # Обычное обсуждение дороги/расстояния не превращаем в заявку.
     if looks_like_route_discussion_only(text):
         return None, "route_discussion_only"
 
-    # Сначала определяем строгий прямой запрос услуги.
     direct_intent = has_explicit_service_request(text)
 
+    # Нестандартный запрос «нужен человек с правами» всё равно потенциально
+    # относится к трансферу, но не считается горячим без дополнительных деталей.
+    if is_nonstandard_driver_request(text):
+        direct_intent = True
+
     if not direct_intent:
-        # Планирование: едет/собирается/ищет компанию/спрашивает маршрут,
-        # но пока не просит конкретную платную услугу.
         if is_planning_request(text):
-            reasons = ["планирует поездку", "нет прямого запроса услуги"]
+            reasons = ["планирует будущую поездку", "нет прямого запроса услуги"]
             if any(p in lower for p in ["кто едет", "ищу компанию", "ищем компанию", "ищу попут", "ищем попут"]):
                 reasons.append("ищет попутчиков/компанию")
             if detect_route(text):
@@ -1553,16 +1700,14 @@ def classify_lead_detailed(text, source_context=""):
                 "temperature": "planning",
             }, None
 
-        # Чистые справочные вопросы без коммерческого намерения не идут в поток.
         if looks_informational_only(text):
             return None, "informational_only"
-
         return None, "no_direct_service_intent"
 
     lead_type = detect_lead_type(text)
+    if is_nonstandard_driver_request(text):
+        lead_type = "transfer"
     if lead_type == "unknown" or lead_type == "companions":
-        # Попутчики без запроса услуги должны были уйти в planning.
-        # Если тип не распознан — не рискуем засорять поток.
         return None, "unknown_service_type"
 
     score = 55
@@ -1581,13 +1726,31 @@ def classify_lead_detailed(text, source_context=""):
         reasons.append("экскурсия")
 
     context_signals = strong_context_signals(text)
-    if context_signals:
-        # Один сильный контекст уже делает прямую заявку горячей.
+    research_only = is_price_research_request(text)
+    nonstandard_driver = is_nonstandard_driver_request(text)
+
+    force_warm = False
+    if research_only:
+        reasons.append("сравнивает/уточняет условия")
+        # Вопрос о цене + количество людей/маршрут ещё не означает готовый заказ.
+        # До hot повышаем только при дате/времени или явной просьбе выполнить поездку.
+        concrete_when = bool(detect_date_hint(text) or detect_time_hint(text) or detect_urgency(text))
+        if not concrete_when and not has_execution_request(text):
+            force_warm = True
+
+    if nonstandard_driver and not (detect_date_hint(text) or detect_time_hint(text) or detect_people(text)):
+        reasons.append("нестандартный запрос водителя")
+        force_warm = True
+
+    if context_signals and not force_warm:
         score += 25 + min(15, (len(context_signals) - 1) * 5)
         reasons.extend(context_signals)
         level = "🔥 ГОРЯЧИЙ"
         temperature = "hot"
     else:
+        # Даже при наличии маршрута/людей исследовательский запрос остаётся тёплым.
+        score += min(12, len(context_signals) * 3)
+        reasons.extend(context_signals)
         level = "🟡 ТЁПЛЫЙ"
         temperature = "warm"
 
@@ -1598,8 +1761,6 @@ def classify_lead_detailed(text, source_context=""):
     if len(text) < 8:
         score -= 10
 
-    # Защитный минимум: прямой запрос услуги остаётся тёплым, но совсем
-    # подозрительно короткие/слабые формулировки не отправляем.
     if score < MIN_SCORE_TO_SEND:
         return None, "low_score"
 
@@ -1607,10 +1768,11 @@ def classify_lead_detailed(text, source_context=""):
         "score": score,
         "level": level,
         "lead_type": lead_type,
-        "reasons": reasons,
+        "reasons": list(dict.fromkeys(reasons)),
         "bucket": "direct",
         "temperature": temperature,
     }, None
+
 
 def classify_lead(text):
     classification, _ = classify_lead_detailed(text)
@@ -1627,18 +1789,27 @@ def make_reply(text, lead_type, classification=None):
     people = detect_people(text)
     date_hint = detect_date_hint(text)
     urgency = detect_urgency(text)
+    time_hint = detect_time_hint(text)
     places = detect_all_places(text)
-    temperature = (classification or {}).get("temperature")
+    children = detect_children(text)
+    baggage = detect_baggage(text)
 
     parts = ["Добрый день!"]
 
     if lead_type == "planning":
-        # Ненавязчивый полезный ответ: без продажи в лоб.
         if route:
-            parts.append(f"Если будете планировать маршрут «{route}», могу подсказать оптимальный вариант по времени и выезду.")
+            parts.append(f"По маршруту «{route}» могу подсказать удобный вариант по времени и выезду.")
         else:
-            parts.append("Если будете планировать поездку по Абхазии, могу подсказать удобный маршрут под ваши даты.")
-        parts.append("Напишите, откуда будете выезжать и сколько вас человек — подскажу варианты.")
+            parts.append("По поездке в Абхазию могу подсказать маршрут под ваши даты без навязчивой продажи.")
+        missing = []
+        if not date_hint:
+            missing.append("даты поездки")
+        if not city and len(places) < 1:
+            missing.append("откуда будете выезжать")
+        if not people:
+            missing.append("сколько вас человек")
+        if missing:
+            parts.append("Напишите " + ", ".join(missing) + " — подскажу варианты.")
         return " ".join(parts)
 
     if lead_type == "transfer":
@@ -1648,44 +1819,69 @@ def make_reply(text, lead_type, classification=None):
             parts.append("Могу помочь с трансфером.")
 
         if date_hint or urgency:
-            when = date_hint or urgency
-            parts.append(f"На {when} можно проверить свободную машину.")
+            parts.append(f"На {date_hint or urgency} можно проверить свободную машину.")
         if people:
-            parts.append(f"Для {people} человек подберём подходящий автомобиль.")
+            vehicle_note = "минивэн" if people >= 5 or "минивэн" in text.lower() or "минивен" in text.lower() else "подходящий автомобиль"
+            parts.append(f"Для {people} человек подберём {vehicle_note}.")
 
-        if temperature == "hot":
-            parts.append("Напишите точное время, адрес/точку подачи и количество багажа — быстро проверю вариант.")
+        missing = []
+        if not date_hint and not urgency:
+            missing.append("дату поездки")
+        if not time_hint:
+            missing.append("точное время")
+        if len(places) < 2:
+            missing.append("точки отправления и назначения")
+        if not people:
+            missing.append("количество пассажиров")
+        if not baggage:
+            missing.append("есть ли багаж")
+
+        if missing:
+            parts.append("Напишите, пожалуйста, " + ", ".join(missing) + " — быстро проверю вариант.")
         else:
-            parts.append("Напишите, пожалуйста, дату, маршрут, количество пассажиров и багажа — подберу вариант.")
+            parts.append("Если всё верно, могу проверить свободную машину по этим данным.")
 
     elif lead_type == "excursion":
         if route == "Святыни":
             parts.append("Могу организовать поездку по святыням Абхазии.")
             if "илор" in text.lower():
-                parts.append("Можно включить Илорский храм в маршрут.")
+                parts.append("Илорский храм можно включить в маршрут.")
         elif route:
             parts.append(f"Могу организовать поездку по маршруту «{route}».")
         else:
             parts.append("Могу помочь подобрать экскурсию по Абхазии под ваши пожелания.")
 
         if city:
-            parts.append(f"Можно подобрать удобный выезд из {city}.")
+            parts.append(f"Выезд можно подобрать из {city}.")
         if people:
             parts.append(f"Для компании из {people} человек подберём формат.")
         if date_hint or urgency:
             parts.append(f"На {date_hint or urgency} можно проверить свободное время.")
 
-        if temperature == "hot":
-            parts.append("Напишите, пожалуйста, точную дату, сколько будет взрослых и детей и откуда нужен выезд — предложу конкретный вариант.")
-        else:
-            parts.append("Напишите дату поездки, сколько вас человек и что хочется увидеть — подберу маршрут.")
+        missing = []
+        if not date_hint and not urgency:
+            missing.append("дату поездки")
+        if not people:
+            missing.append("сколько вас человек")
+        if not city and len(places) < 1:
+            missing.append("откуда нужен выезд")
+        if not route:
+            missing.append("что хочется увидеть")
+        if children and people:
+            missing.append("сколько из них детей")
 
+        if missing:
+            parts.append("Напишите, пожалуйста, " + ", ".join(missing) + " — предложу конкретный вариант.")
+        else:
+            parts.append("По этим данным уже можно подобрать конкретный вариант поездки.")
     else:
         return None
 
     return " ".join(parts)
 
 
+# =========================================================
+# CARDS
 # =========================================================
 # CARDS
 # =========================================================
@@ -1716,7 +1912,7 @@ def source_title(entity):
     )
 
 
-def make_card(text, entity, sender, message_id, date, classification):
+def make_card(text, entity, sender, message_id, date, classification, chain_count=1):
     lead_type = classification["lead_type"]
     city = detect_city(text)
     route = detect_route(text)
@@ -1754,6 +1950,8 @@ def make_card(text, entity, sender, message_id, date, classification):
         lines.append(f"👤 Автор: <b>{html.escape(sender_name)}</b>")
     if sender_username:
         lines.append(f"🔹 Telegram: @{html.escape(sender_username)}")
+    if chain_count and chain_count > 1:
+        lines.append(f"🧩 Сообщений в цепочке: <b>{int(chain_count)}</b>")
     if cis_origin:
         lines.append(f"🌍 СНГ / откуда: <b>{html.escape(cis_origin)}</b>")
     if city:
@@ -2303,6 +2501,8 @@ def new_filter_stats():
         "seller_or_ad": 0,
         "broadcast_content": 0,
         "advice_response": 0,
+        "reply_advice_filtered": 0,
+        "past_trip_filtered": 0,
         "route_discussion_only": 0,
         "cargo_request": 0,
         "informational_only": 0,
@@ -2316,6 +2516,8 @@ def new_filter_stats():
         "accepted": 0,
         "hot_leads": 0,
         "warm_leads": 0,
+        "merged_chains": 0,
+        "merged_messages": 0,
         "external_pages_ok": 0,
         "external_mojeek_ok": 0,
         "external_baseline": 0,
@@ -2357,10 +2559,14 @@ def print_filter_stats(stats):
     print(f"Jobs/vacancies:                {stats['job_or_vacancy']}")
     print(f"Seller/advertising text:       {stats['seller_or_ad']}")
     print(f"Broadcast/information content: {stats['broadcast_content']}")
-    print(f"Advice/reply to tourist:       {stats['advice_response']}")
+    print(f"Reply/advice filtered:         {stats['reply_advice_filtered']}")
+    print(f"Past-trip filtered:            {stats['past_trip_filtered']}")
+    print(f"Advice/reply legacy counter:   {stats['advice_response']}")
     print(f"Route discussion only:         {stats['route_discussion_only']}")
     print(f"Cargo/parcel request:          {stats['cargo_request']}")
     print(f"Informational only:            {stats['informational_only']}")
+    print(f"Merged author chains:          {stats['merged_chains']}")
+    print(f"Messages in merged chains:     {stats['merged_messages']}")
     print(f"Planning candidates:           {stats['planning_candidate']}")
     print(f"No direct service intent:      {stats['no_direct_service_intent']}")
     print(f"Unknown service type:          {stats['unknown_service_type']}")
@@ -2431,7 +2637,6 @@ async def message_to_candidate(
     bump_stat(stats, "messages_seen")
     bump_source(stats, source_name, "seen")
 
-    # Наши собственные сообщения и посты каналов не являются лидами.
     if getattr(message, "out", False) or getattr(message, "post", False):
         bump_stat(stats, "own_or_channel_post")
         return None
@@ -2453,29 +2658,6 @@ async def message_to_candidate(
         return None
 
     chat = await message.get_chat()
-
-    # Если это ответ-совет другому туристу, пробуем взять исходный вопрос
-    # из той же ветки и анализировать именно его.
-    if allow_reply_lookup and looks_like_advice_response(text):
-        reply_id = getattr(message, "reply_to_msg_id", None)
-        if reply_id and chat:
-            try:
-                original = await client.get_messages(chat, ids=reply_id)
-                if original and original.id != message.id:
-                    return await message_to_candidate(
-                        client,
-                        original,
-                        cutoff,
-                        state,
-                        source_kind,
-                        source_name,
-                        self_user_id,
-                        stats,
-                        allow_reply_lookup=False,
-                    )
-            except Exception:
-                pass
-
     if source_kind == "joined":
         if not is_joined_tourist_chat(chat):
             bump_stat(stats, "blocked_or_nonpublic_chat")
@@ -2504,25 +2686,46 @@ async def message_to_candidate(
         return None
 
     context_hint = f"{source_name} {source_title(chat)}"
+
+    # Не подменяем ответ другого человека исходным вопросом: оригинальный автор
+    # будет найден при обычном сканировании. Так Julia/советчики не создают дубль.
+    if looks_like_past_trip(text):
+        bump_stat(stats, "past_trip_filtered")
+        return None
+    if looks_like_advice_response(text):
+        bump_stat(stats, "reply_advice_filtered")
+        bump_stat(stats, "advice_response")
+        return None
+
     classification, reject_reason = classify_lead_detailed(text, source_context=context_hint)
+
+    # Слабое соседнее сообщение сохраняем только как контекст будущей цепочки
+    # того же автора: например «нас 5, нужен минивэн» или «будем завтра».
     if not classification:
+        if reject_reason in {
+            "no_direct_service_intent", "informational_only",
+            "no_abkhazia_context", "unknown_service_type",
+        } and is_chain_context_message(text, context_hint):
+            return {
+                "id": unique_id,
+                "message_id": message.id,
+                "text": text,
+                "date": date,
+                "chat": chat,
+                "chat_id": getattr(chat, "id", None),
+                "sender": sender,
+                "sender_id": getattr(sender, "id", None),
+                "sender_username": getattr(sender, "username", None),
+                "classification": None,
+                "reject_reason": reject_reason,
+                "source_kind": source_kind,
+                "source_name": source_name,
+                "context_hint": context_hint,
+            }
+
         if reject_reason:
             bump_stat(stats, reject_reason)
         return None
-
-    if not has_abkhazia_context(text) and has_abkhazia_source_context(context_hint):
-        bump_stat(stats, "source_context_used")
-
-    if classification.get("bucket") == "planning":
-        bump_stat(stats, "planning_candidate")
-        bump_source(stats, source_name, "planning")
-    else:
-        bump_stat(stats, "accepted")
-        if classification.get("temperature") == "hot":
-            bump_stat(stats, "hot_leads")
-        elif classification.get("temperature") == "warm":
-            bump_stat(stats, "warm_leads")
-        bump_source(stats, source_name, "accepted")
 
     return {
         "id": unique_id,
@@ -2530,18 +2733,145 @@ async def message_to_candidate(
         "text": text,
         "date": date,
         "chat": chat,
+        "chat_id": getattr(chat, "id", None),
         "sender": sender,
+        "sender_id": getattr(sender, "id", None),
+        "sender_username": getattr(sender, "username", None),
         "classification": classification,
         "source_kind": source_kind,
+        "source_name": source_name,
+        "context_hint": context_hint,
     }
 
 
 def merge_candidate(candidates, item):
     if not item:
         return
+
     current = candidates.get(item["id"])
-    if current is None or item["classification"]["score"] > current["classification"]["score"]:
+    if current is None:
         candidates[item["id"]] = item
+        return
+
+    # Один и тот же Telegram message может встретиться через GLOBAL и через чат.
+    # Предпочитаем запись с распознанной классификацией и более конкретным источником.
+    current_score = (current.get("classification") or {}).get("score", -1)
+    item_score = (item.get("classification") or {}).get("score", -1)
+    source_rank = {"joined": 4, "whitelist": 3, "discovered": 2, "global": 1}
+    if item_score > current_score or (
+        item_score == current_score
+        and source_rank.get(item.get("source_kind"), 0) > source_rank.get(current.get("source_kind"), 0)
+    ):
+        candidates[item["id"]] = item
+
+
+def candidate_chain_key(item):
+    chat_id = item.get("chat_id") or getattr(item.get("chat"), "id", None) or "unknown-chat"
+    sender_id = item.get("sender_id") or getattr(item.get("sender"), "id", None)
+    if sender_id is not None:
+        return (str(chat_id), f"id:{sender_id}")
+
+    username = (item.get("sender_username") or getattr(item.get("sender"), "username", None) or "").lower()
+    if username:
+        return (str(chat_id), f"user:{username}")
+
+    # Без идентификатора автора не склеиваем разные сообщения.
+    return (str(chat_id), f"message:{item.get('id')}")
+
+
+def split_author_chains(items):
+    groups = {}
+    for item in items:
+        groups.setdefault(candidate_chain_key(item), []).append(item)
+
+    chains = []
+    window = timedelta(hours=CHAIN_WINDOW_HOURS)
+    for grouped in groups.values():
+        grouped.sort(key=lambda x: x["date"])
+        current = []
+        previous_date = None
+        for item in grouped:
+            if previous_date is None or item["date"] - previous_date <= window:
+                current.append(item)
+            else:
+                if current:
+                    chains.append(current)
+                current = [item]
+            previous_date = item["date"]
+        if current:
+            chains.append(current)
+    return chains
+
+
+def aggregate_telegram_candidates(items, stats):
+    aggregated = []
+
+    for chain in split_author_chains(items):
+        chain.sort(key=lambda x: x["date"])
+        # Убираем повторы текста, если один message пришёл из нескольких поисковых путей.
+        unique_texts = []
+        seen_texts = set()
+        for item in chain:
+            value = normalize(item.get("text", ""))
+            if value and value not in seen_texts:
+                unique_texts.append(value)
+                seen_texts.add(value)
+        combined_text = "\n".join(unique_texts)
+        if not combined_text:
+            continue
+
+        anchor = max(chain, key=lambda x: x["date"])
+        source_context = " ".join(
+            dict.fromkeys(
+                normalize(item.get("context_hint") or "")
+                for item in chain
+                if item.get("context_hint")
+            )
+        )
+
+        classification, reject_reason = classify_lead_detailed(combined_text, source_context=source_context)
+        if not classification:
+            if reject_reason:
+                bump_stat(stats, reject_reason)
+            continue
+
+        if len(chain) > 1:
+            bump_stat(stats, "merged_chains")
+            bump_stat(stats, "merged_messages", len(chain))
+
+        if not has_abkhazia_context(combined_text) and has_abkhazia_source_context(source_context):
+            bump_stat(stats, "source_context_used")
+
+        source_name = anchor.get("source_name") or "Telegram"
+        if classification.get("bucket") == "planning":
+            bump_stat(stats, "planning_candidate")
+            bump_source(stats, source_name, "planning")
+        else:
+            bump_stat(stats, "accepted")
+            if classification.get("temperature") == "hot":
+                bump_stat(stats, "hot_leads")
+            elif classification.get("temperature") == "warm":
+                bump_stat(stats, "warm_leads")
+            bump_source(stats, source_name, "accepted")
+
+        all_seen_ids = [item["id"] for item in chain]
+        all_message_ids = [item["message_id"] for item in chain]
+        aggregated.append({
+            "id": anchor["id"],
+            "seen_ids": all_seen_ids,
+            "message_ids": all_message_ids,
+            "message_id": anchor["message_id"],
+            "text": combined_text,
+            "date": anchor["date"],
+            "chat": anchor["chat"],
+            "sender": anchor["sender"],
+            "classification": classification,
+            "source_kind": anchor.get("source_kind"),
+            "source_name": source_name,
+            "chain_count": len(chain),
+        })
+
+    return aggregated
 
 
 async def global_search_worker(client, state, cutoff, self_user_id, stats):
@@ -2711,11 +3041,6 @@ async def search_public_messages(client, state, self_user_id):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
     stats = new_filter_stats()
 
-    # Четыре независимых потока поиска:
-    # 1) глобальный Telegram-поиск;
-    # 2) наш белый список;
-    # 3) автоматическое обнаружение новых публичных туристических групп;
-    # 4) тематические группы, в которые пользователь уже вступил сам.
     global_results, chat_results, discovered_results, joined_results = await asyncio.gather(
         global_search_worker(client, state, cutoff, self_user_id, stats),
         chat_scan_worker(client, state, cutoff, self_user_id, stats),
@@ -2728,7 +3053,7 @@ async def search_public_messages(client, state, self_user_id):
         for item in source.values():
             merge_candidate(candidates, item)
 
-    result = list(candidates.values())
+    result = aggregate_telegram_candidates(list(candidates.values()), stats)
     direct = [item for item in result if item["classification"].get("bucket") == "direct"]
     planning = [item for item in result if item["classification"].get("bucket") == "planning"]
 
@@ -2890,9 +3215,11 @@ async def async_main():
                         lead["message_id"],
                         lead["date"],
                         lead["classification"],
+                        chain_count=lead.get("chain_count", 1),
                     )
                 card_message_id = send_private_message(card)
-                state.setdefault("seen", []).append(lead["id"])
+                for seen_id in lead.get("seen_ids", [lead["id"]]):
+                    state.setdefault("seen", []).append(seen_id)
 
                 # Черновик ответа отправляем отдельным сообщением без HTML,
                 # чтобы его можно было скопировать целиком одним нажатием.
@@ -2922,7 +3249,8 @@ async def async_main():
                 send_private_message(digest)
                 planning_sent = len(planning)
                 for item in planning:
-                    state.setdefault("seen", []).append(item["id"])
+                    for seen_id in item.get("seen_ids", [item["id"]]):
+                        state.setdefault("seen", []).append(seen_id)
             except Exception as exc:
                 print("Planning digest warning:", exc)
 
