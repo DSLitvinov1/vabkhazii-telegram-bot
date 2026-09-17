@@ -39,8 +39,11 @@ QUERY_DELAY_SECONDS = 0.20
 # Белый список именно туристических обсуждений, не рекламных каналов гидов.
 # Недоступный/переименованный чат просто будет пропущен с warning в Actions.
 TARGET_CHATS = [
-    "abkhazia_chat",
-    "abhazia_travel_chat",
+    # Туристические обсуждения и форумы, а не каналы продаж экскурсий.
+    "abkhazia_chat",          # АБХАЗИЯ чат туристов
+    "abhazia_travel_chat",    # Абхазия · Наша Планета · чат путешествия
+    "abkhazia4at",            # Абхазия · попутчики
+    "abhaziya_chat",          # Абхазия чат / форум
 ]
 
 # Наши источники и технические аккаунты никогда не считаем лидами.
@@ -751,34 +754,30 @@ def detect_lead_type(text):
     return best_type
 
 
-def classify_lead(text):
+def classify_lead_detailed(text):
     lower = text.lower()
 
-    # Сначала жёстко убираем вакансии, рекламные объявления и контент-посты.
+    # Возвращаем не только результат, но и причину отсева.
+    # Это позволяет видеть в Actions, почему кандидаты не дошли до уведомления.
     if looks_like_job(text):
-        return None
+        return None, "job_or_vacancy"
 
     if looks_like_seller(text):
-        return None
+        return None, "seller_or_ad"
 
     if looks_like_broadcast_content(text):
-        return None
+        return None, "broadcast_content"
 
     if looks_like_advice_response(text):
-        return None
+        return None, "advice_response"
 
-    # Нам нужен именно потенциальный покупатель, а не просто упоминание Рицы/трансфера.
     if not has_buyer_intent(text):
-        return None
+        return None, "no_buyer_intent"
 
-    # Поисковик предназначен для Абхазии и связанных с ней маршрутов.
     if not has_abkhazia_context(text):
-        return None
+        return None, "no_abkhazia_context"
 
     lead_type = detect_lead_type(text)
-
-    # Если намерение есть, но тип не определился, туристический вопрос
-    # по Абхазии считаем экскурсионным запросом.
     if lead_type == "unknown":
         lead_type = "excursion"
 
@@ -828,7 +827,7 @@ def classify_lead(text):
     if "?" in text:
         score += 5
 
-    # Слишком длинные посты без вопроса чаще являются публикациями/рекламой.
+    # Длинные публикации без вопроса чаще являются контентом/рекламой.
     if len(text) > 900 and "?" not in text:
         score -= 25
 
@@ -842,14 +841,19 @@ def classify_lead(text):
     elif score >= MIN_SCORE_TO_SEND:
         level = "⚪ ПЕРСПЕКТИВНЫЙ"
     else:
-        return None
+        return None, "low_score"
 
     return {
         "score": score,
         "level": level,
         "lead_type": lead_type,
         "reasons": reasons,
-    }
+    }, None
+
+
+def classify_lead(text):
+    classification, _ = classify_lead_detailed(text)
+    return classification
 
 
 # =========================================================
@@ -1015,33 +1019,121 @@ def make_card(text, entity, sender, message_id, date, classification):
 # SEARCH
 # =========================================================
 
-async def message_to_candidate(message, cutoff, state, source_kind, self_user_id):
+def new_filter_stats():
+    return {
+        "messages_seen": 0,
+        "own_or_channel_post": 0,
+        "forwarded_or_via_bot": 0,
+        "empty_or_no_date": 0,
+        "too_old": 0,
+        "blocked_or_nonpublic_chat": 0,
+        "invalid_sender": 0,
+        "commercial_sender": 0,
+        "duplicate": 0,
+        "job_or_vacancy": 0,
+        "seller_or_ad": 0,
+        "broadcast_content": 0,
+        "advice_response": 0,
+        "no_buyer_intent": 0,
+        "no_abkhazia_context": 0,
+        "low_score": 0,
+        "accepted": 0,
+        "sources": {},
+    }
+
+
+def bump_stat(stats, key, amount=1):
+    stats[key] = stats.get(key, 0) + amount
+
+
+def bump_source(stats, source_name, field):
+    source = stats["sources"].setdefault(
+        source_name,
+        {"seen": 0, "accepted": 0},
+    )
+    source[field] = source.get(field, 0) + 1
+
+
+def print_filter_stats(stats):
+    print("")
+    print("=" * 68)
+    print("FILTER DIAGNOSTICS")
+    print("=" * 68)
+    print(f"Messages checked:              {stats['messages_seen']}")
+    print(f"Own/channel posts:             {stats['own_or_channel_post']}")
+    print(f"Forwarded/via bot:             {stats['forwarded_or_via_bot']}")
+    print(f"Empty/no date:                 {stats['empty_or_no_date']}")
+    print(f"Too old:                       {stats['too_old']}")
+    print(f"Blocked/non-public chat:       {stats['blocked_or_nonpublic_chat']}")
+    print(f"Invalid sender/bot/self:       {stats['invalid_sender']}")
+    print(f"Commercial sender profile:     {stats['commercial_sender']}")
+    print(f"Duplicates:                    {stats['duplicate']}")
+    print(f"Jobs/vacancies:                {stats['job_or_vacancy']}")
+    print(f"Seller/advertising text:       {stats['seller_or_ad']}")
+    print(f"Broadcast/information content: {stats['broadcast_content']}")
+    print(f"Advice/reply to tourist:       {stats['advice_response']}")
+    print(f"No buyer intent:               {stats['no_buyer_intent']}")
+    print(f"No Abkhazia context:           {stats['no_abkhazia_context']}")
+    print(f"Below score threshold:         {stats['low_score']}")
+    print(f"Accepted candidates:           {stats['accepted']}")
+    print("")
+    print("SOURCE STATS")
+    if not stats["sources"]:
+        print("  no sources processed")
+    else:
+        for source_name, values in sorted(
+            stats["sources"].items(),
+            key=lambda item: item[1].get("accepted", 0),
+            reverse=True,
+        ):
+            print(
+                f"  {source_name}: "
+                f"seen={values.get('seen', 0)}, "
+                f"accepted={values.get('accepted', 0)}"
+            )
+    print("=" * 68)
+    print("")
+
+
+async def message_to_candidate(
+    message,
+    cutoff,
+    state,
+    source_kind,
+    source_name,
+    self_user_id,
+    stats,
+):
     if not message:
         return None
 
-    # Наши собственные сообщения, посты каналов, пересылки и сообщения через ботов
-    # не должны попадать в лиды.
-    if getattr(message, "out", False):
+    bump_stat(stats, "messages_seen")
+    bump_source(stats, source_name, "seen")
+
+    # Наши собственные сообщения и посты каналов не являются лидами.
+    if getattr(message, "out", False) or getattr(message, "post", False):
+        bump_stat(stats, "own_or_channel_post")
         return None
-    if getattr(message, "post", False):
-        return None
-    if getattr(message, "fwd_from", None):
-        return None
-    if getattr(message, "via_bot_id", None):
+
+    if getattr(message, "fwd_from", None) or getattr(message, "via_bot_id", None):
+        bump_stat(stats, "forwarded_or_via_bot")
         return None
 
     text = normalize(getattr(message, "message", ""))
     if not text or not message.date:
+        bump_stat(stats, "empty_or_no_date")
         return None
 
     date = message.date
     if date.tzinfo is None:
         date = date.replace(tzinfo=timezone.utc)
     if date < cutoff:
+        bump_stat(stats, "too_old")
         return None
 
     chat = await message.get_chat()
     if not is_allowed_chat(chat):
+        bump_stat(stats, "blocked_or_nonpublic_chat")
         return None
 
     try:
@@ -1050,18 +1142,26 @@ async def message_to_candidate(message, cutoff, state, source_kind, self_user_id
         sender = None
 
     if not is_allowed_sender(sender, self_user_id):
+        bump_stat(stats, "invalid_sender")
         return None
 
     if looks_like_commercial_sender(sender, text):
+        bump_stat(stats, "commercial_sender")
         return None
 
     unique_id = f"{getattr(chat, 'id', '')}:{message.id}"
     if unique_id in state.get("seen", []):
+        bump_stat(stats, "duplicate")
         return None
 
-    classification = classify_lead(text)
+    classification, reject_reason = classify_lead_detailed(text)
     if not classification:
+        if reject_reason:
+            bump_stat(stats, reject_reason)
         return None
+
+    bump_stat(stats, "accepted")
+    bump_source(stats, source_name, "accepted")
 
     return {
         "id": unique_id,
@@ -1083,14 +1183,22 @@ def merge_candidate(candidates, item):
         candidates[item["id"]] = item
 
 
-async def global_search_worker(client, state, cutoff, self_user_id):
+async def global_search_worker(client, state, cutoff, self_user_id, stats):
     candidates = {}
 
     for query in SEARCH_QUERIES:
         print(f"[GLOBAL] {query}")
         try:
             async for message in client.iter_messages(None, search=query, limit=SEARCH_LIMIT):
-                item = await message_to_candidate(message, cutoff, state, "global", self_user_id)
+                item = await message_to_candidate(
+                    message,
+                    cutoff,
+                    state,
+                    "global",
+                    "GLOBAL",
+                    self_user_id,
+                    stats,
+                )
                 merge_candidate(candidates, item)
 
         except FloodWaitError as exc:
@@ -1107,11 +1215,12 @@ async def global_search_worker(client, state, cutoff, self_user_id):
     return candidates
 
 
-async def chat_scan_worker(client, state, cutoff, self_user_id):
+async def chat_scan_worker(client, state, cutoff, self_user_id, stats):
     candidates = {}
 
     for chat_ref in TARGET_CHATS:
-        print(f"[CHAT] @{chat_ref}")
+        source_name = f"@{chat_ref}"
+        print(f"[CHAT] {source_name}")
         try:
             entity = await client.get_entity(chat_ref)
 
@@ -1123,26 +1232,35 @@ async def chat_scan_worker(client, state, cutoff, self_user_id):
                     if date < cutoff:
                         break
 
-                item = await message_to_candidate(message, cutoff, state, "whitelist", self_user_id)
+                item = await message_to_candidate(
+                    message,
+                    cutoff,
+                    state,
+                    "whitelist",
+                    source_name,
+                    self_user_id,
+                    stats,
+                )
                 merge_candidate(candidates, item)
 
         except FloodWaitError as exc:
-            print(f"[CHAT FLOOD WAIT] @{chat_ref}: {exc.seconds}s")
+            print(f"[CHAT FLOOD WAIT] {source_name}: {exc.seconds}s")
             if exc.seconds <= 60:
                 await asyncio.sleep(exc.seconds + 1)
         except Exception as exc:
-            print(f"[CHAT WARNING] @{chat_ref}: {exc}")
+            print(f"[CHAT WARNING] {source_name}: {exc}")
 
     return candidates
 
 
 async def search_public_messages(client, state, self_user_id):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
+    stats = new_filter_stats()
 
-    # Два независимых поисковых воркера первого этапа.
+    # Независимые воркеры: глобальный поиск + целевые туристические чаты.
     global_results, chat_results = await asyncio.gather(
-        global_search_worker(client, state, cutoff, self_user_id),
-        chat_scan_worker(client, state, cutoff, self_user_id),
+        global_search_worker(client, state, cutoff, self_user_id, stats),
+        chat_scan_worker(client, state, cutoff, self_user_id, stats),
     )
 
     candidates = {}
@@ -1156,7 +1274,7 @@ async def search_public_messages(client, state, self_user_id):
         reverse=True,
     )
 
-    return result[:MAX_LEADS_PER_RUN]
+    return result[:MAX_LEADS_PER_RUN], stats
 
 
 # =========================================================
@@ -1175,7 +1293,8 @@ async def async_main():
         me = await client.get_me()
         print("Connected as:", getattr(me, "first_name", ""), getattr(me, "username", ""))
 
-        leads = await search_public_messages(client, state, getattr(me, "id", None))
+        leads, stats = await search_public_messages(client, state, getattr(me, "id", None))
+        print_filter_stats(stats)
         print(f"Found {len(leads)} lead(s)")
 
         if not leads:
