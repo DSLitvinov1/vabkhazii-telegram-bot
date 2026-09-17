@@ -12,6 +12,7 @@ from pathlib import Path
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
+from telethon.tl.types import User
 
 
 # =========================================================
@@ -40,8 +41,13 @@ QUERY_DELAY_SECONDS = 0.20
 TARGET_CHATS = [
     "abkhazia_chat",
     "abhazia_travel_chat",
-    "Abkhaziya_Chat",
 ]
+
+# Наши источники и технические аккаунты никогда не считаем лидами.
+BLOCKED_USERNAMES = {
+    "vabkhazii",
+    "vabkhaziileadsbot",
+}
 
 
 # =========================================================
@@ -193,7 +199,44 @@ SELLER_PHRASES = [
     "туроператор", "турагентство", "турфирма", "экскурсионное бюро",
     "скидка на экскурсию", "трансферы по абхазии", "предлагаем трансфер",
     "предлагаю трансфер", "заказывайте трансфер", "услуги трансфера",
-    "наш автопарк", "наши автомобили",
+    "наш автопарк", "наши автомобили", "трансфер каждый день",
+    "встречаем в аэропорту", "встречаем на вокзале", "заказ трансфера",
+    "для бронирования", "по вопросам бронирования", "пишите в личные сообщения",
+    "пишите в лс", "запись в директ", "записывайтесь", "места ограничены",
+]
+
+JOB_PHRASES = [
+    "требуются водители", "требуется водитель", "нужны водители",
+    "нуждаемся в водителях", "ищем водителей", "ищем водителя на работу",
+    "вакансия водителя", "вакансия", "работа водителем", "работа для водителей",
+    "если ты водитель", "если вы водитель", "приглашаем водителей",
+    "требуются сотрудники", "ищем сотрудников", "зарплата", "оплата за смену",
+    "водитель категории", "резюме",
+]
+
+BROADCAST_CONTENT_PHRASES = [
+    "абхазия сегодня", "побережье:", "осадки:", "ветер до", "море: вода",
+    "мой выбор на сегодня", "факт дня", "прогноз погоды", "погода сегодня",
+    "новости абхазии", "дайджест", "доброе утро", "подписывайтесь",
+    "наш канал", "в нашем канале", "смотрите видео", "посмотрите на это видео",
+]
+
+BUYER_INTENT_PHRASES = [
+    "нужен ", "нужна ", "нужно ", "ищу ", "ищем ", "хочу ", "хотим ",
+    "подскажите", "посоветуйте", "порекомендуйте", "кто может", "кто возит",
+    "кто отвезет", "кто отвезёт", "кто довезет", "кто довезёт",
+    "кто заберет", "кто заберёт", "кто встретит", "кто свозит",
+    "как добраться", "как доехать", "куда поехать", "куда съездить",
+    "куда сходить", "что посмотреть", "что посетить", "чем заняться",
+    "где заказать", "где найти", "сколько стоит", "сколько будет стоить",
+    "можно заказать", "можно ли заказать", "кто организует", "есть ли",
+    "кто едет", "кто завтра", "кто сегодня", "ищем попут", "ищу попут",
+]
+
+ABKHAZIA_CONTEXT_PHRASES = [
+    "абхаз", "псоу", "цандрыпш", "гантиади", "гагр", "пицунд", "гудаут",
+    "новый афон", "нового афона", "новом афоне", "сухум", "очамч", "ткуарчал",
+    "риц", "мзы", "акармар", "амткел", "шакуран", "черниговк",
 ]
 
 TRANSFER_PHRASES = [
@@ -220,7 +263,7 @@ EXCURSION_PHRASES = [
     "нужна экскурсия", "ищем экскурсию", "ищу экскурсию", "хочу экскурсию",
     "хотим экскурсию", "посоветуйте экскурсию", "какую экскурсию",
     "индивидуальная экскурсия", "куда поехать", "куда съездить", "куда сходить",
-    "что посмотреть", "что посетить", "куда лучше поехать", "кто возит на рицу",
+    "что посмотреть", "что посетить", "чем заняться", "куда лучше поехать", "кто возит на рицу",
     "хочу на рицу", "хотим на рицу", "как попасть на рицу", "хочу на мзы",
     "хотим на мзы", "как попасть на мзы", "джиппинг", "джип тур", "джип-тур",
     "достопримечательности",
@@ -233,13 +276,13 @@ EXCURSION_PHRASES = [
 
 CITIES = {
     "Цандрыпш": ["цандрыпш", "гантиади"],
-    "Гагра": ["гагра", "гагре", "гагры"],
-    "Пицунда": ["пицунда", "пицунде", "пицунды"],
-    "Гудаута": ["гудаута", "гудауте", "гудауты"],
-    "Новый Афон": ["новый афон", "новом афоне"],
-    "Сухум": ["сухум", "сухуме", "сухуми", "сухума"],
-    "Очамчыра": ["очамчыра", "очамчира", "очамчыре"],
-    "Ткуарчал": ["ткуарчал", "ткуарчале"],
+    "Гагра": ["гагра", "гагре", "гагры", "гагру"],
+    "Пицунда": ["пицунда", "пицунде", "пицунды", "пицунду"],
+    "Гудаута": ["гудаута", "гудауте", "гудауты", "гудауту"],
+    "Новый Афон": ["новый афон", "новом афоне", "нового афона", "новому афону"],
+    "Сухум": ["сухум", "сухуме", "сухуми", "сухума", "сухуму"],
+    "Очамчыра": ["очамчыра", "очамчира", "очамчыре", "очамчыру", "очамчиру"],
+    "Ткуарчал": ["ткуарчал", "ткуарчале", "ткуарчала", "ткуарчалу"],
     "Гал": ["гал", "гале"],
     "Адлер": ["адлер", "адлере"],
     "Сочи": ["сочи"],
@@ -265,7 +308,7 @@ SPECIAL_PLACES = {
 }
 
 ROUTES = {
-    "Рица": ["рица", "озеро рица", "малая рица"],
+    "Рица": ["рица", "рицу", "рице", "рицы", "озеро рица", "озеро рицу", "малая рица"],
     "Мзы": ["мзы", "озеро мзы"],
     "Новый Афон": ["новый афон", "новоафон", "новоафонская пещера", "анакопия"],
     "Восточная Абхазия": ["акармара", "ткуарчал", "шакуран", "черниговка", "амткел", "ольгинские водопады", "водопад", "водопады"],
@@ -349,11 +392,91 @@ def looks_like_seller(text):
 
     commercial_markers = [
         "₽", "руб", "цена", "стоимость", "запись", "бронь", "бронируйте",
-        "телефон", "whatsapp", "ватсап", "скидка",
+        "телефон", "whatsapp", "ватсап", "скидка", "акция", "предоплата",
+        "места", "заказ", "менеджер",
     ]
     count = sum(1 for marker in commercial_markers if marker in lower)
 
-    return count >= 4
+    # Несколько коммерческих маркеров + контакт обычно означают объявление продавца.
+    has_contact = bool(
+        re.search(r"(?:\+?7|8)[\s()\-]*\d{3}", lower)
+        or "@" in text
+        or "t.me/" in lower
+    )
+
+    if count >= 3 and has_contact:
+        return True
+
+    return count >= 5
+
+
+def looks_like_job(text):
+    return contains_any(text, JOB_PHRASES)
+
+
+def looks_like_broadcast_content(text):
+    lower = text.lower()
+    hits = sum(1 for phrase in BROADCAST_CONTENT_PHRASES if phrase in lower)
+    return hits >= 2
+
+
+def has_abkhazia_context(text):
+    lower = text.lower()
+    return any(phrase in lower for phrase in ABKHAZIA_CONTEXT_PHRASES)
+
+
+def has_buyer_intent(text):
+    lower = text.lower()
+
+    direct = any(phrase in lower for phrase in BUYER_INTENT_PHRASES)
+    if direct:
+        return True
+
+    # Короткий естественный вопрос туриста тоже считается намерением.
+    question_words = [
+        "кто ", "куда ", "как ", "где ", "какой ", "какая ", "какие ",
+        "можно ли", "есть кто", "подскажите", "посоветуйте",
+    ]
+    if "?" in text and any(word in lower for word in question_words):
+        return True
+
+    return False
+
+
+def is_allowed_chat(chat):
+    if not chat:
+        return False
+
+    username = (getattr(chat, "username", None) or "").lower()
+    if not username:
+        return False
+
+    if username in BLOCKED_USERNAMES:
+        return False
+
+    # Broadcast-каналы — не источник клиентских сообщений.
+    if getattr(chat, "broadcast", False):
+        return False
+
+    # Для первого этапа принимаем только публичные группы/супергруппы.
+    return bool(getattr(chat, "megagroup", False))
+
+
+def is_allowed_sender(sender, self_user_id):
+    if not isinstance(sender, User):
+        return False
+
+    if getattr(sender, "bot", False):
+        return False
+
+    if self_user_id and getattr(sender, "id", None) == self_user_id:
+        return False
+
+    username = (getattr(sender, "username", None) or "").lower()
+    if username in BLOCKED_USERNAMES:
+        return False
+
+    return True
 
 
 # =========================================================
@@ -552,12 +675,33 @@ def detect_lead_type(text):
 def classify_lead(text):
     lower = text.lower()
 
-    if looks_like_seller(lower):
+    # Сначала жёстко убираем вакансии, рекламные объявления и контент-посты.
+    if looks_like_job(text):
+        return None
+
+    if looks_like_seller(text):
+        return None
+
+    if looks_like_broadcast_content(text):
+        return None
+
+    # Нам нужен именно потенциальный покупатель, а не просто упоминание Рицы/трансфера.
+    if not has_buyer_intent(text):
+        return None
+
+    # Поисковик предназначен для Абхазии и связанных с ней маршрутов.
+    if not has_abkhazia_context(text):
         return None
 
     lead_type = detect_lead_type(text)
+
+    # Если намерение есть, но тип не определился, туристический вопрос
+    # по Абхазии считаем экскурсионным запросом.
+    if lead_type == "unknown":
+        lead_type = "excursion"
+
     score = 0
-    reasons = []
+    reasons = ["автор — человек", "есть покупательское намерение"]
 
     hot_hits = [phrase for phrase in HOT_PHRASES if phrase in lower]
     warm_hits = [phrase for phrase in WARM_PHRASES if phrase in lower]
@@ -566,31 +710,33 @@ def classify_lead(text):
     if hot_hits:
         score += 55
         reasons.append("явный запрос услуги")
-    if warm_hits:
-        score += 25
-        reasons.append("туристический интерес")
+    elif warm_hits:
+        score += 28
+        reasons.append("туристический вопрос")
+    else:
+        score += 20
+        reasons.append("потенциальный спрос")
+
     if urgent_hits:
         score += 20
         reasons.append("срочный запрос")
 
     if lead_type == "transfer":
-        score += 12
+        score += 14
         reasons.append("трансфер")
     elif lead_type == "excursion":
-        score += 10
+        score += 12
         reasons.append("экскурсия")
     elif lead_type == "companions":
-        score += 12
+        score += 14
         reasons.append("попутчики/добор")
 
-    if "абхаз" in lower:
-        score += 8
     if detect_route(text):
         score += 8
     if detect_city(text):
         score += 6
     if len(detect_all_places(text)) >= 2:
-        score += 8
+        score += 10
     if detect_people(text):
         score += 8
     if detect_date_hint(text):
@@ -598,16 +744,18 @@ def classify_lead(text):
     if detect_time_hint(text):
         score += 4
     if "?" in text:
-        score += 4
-    if len(text) < 20:
-        score -= 10
+        score += 5
 
-    if lead_type == "unknown" and not hot_hits and not warm_hits:
-        return None
+    # Слишком длинные посты без вопроса чаще являются публикациями/рекламой.
+    if len(text) > 900 and "?" not in text:
+        score -= 25
 
-    if score >= 70:
+    if len(text) < 12:
+        score -= 15
+
+    if score >= 75:
         level = "🔥 ГОРЯЧИЙ"
-    elif score >= 45:
+    elif score >= 50:
         level = "🟡 ТЁПЛЫЙ"
     elif score >= MIN_SCORE_TO_SEND:
         level = "⚪ ПЕРСПЕКТИВНЫЙ"
@@ -726,6 +874,7 @@ def make_card(text, entity, sender, message_id, date, classification):
         "",
         f"⭐ Оценка: <b>{classification['score']}</b>",
         f"📡 Источник: <b>{html.escape(str(source_title(entity)))}</b>",
+        "✅ Автор: <b>пользователь Telegram (не бот и не канал)</b>",
     ]
 
     if sender_name:
@@ -784,8 +933,19 @@ def make_card(text, entity, sender, message_id, date, classification):
 # SEARCH
 # =========================================================
 
-async def message_to_candidate(message, cutoff, state, source_kind):
+async def message_to_candidate(message, cutoff, state, source_kind, self_user_id):
     if not message:
+        return None
+
+    # Наши собственные сообщения, посты каналов, пересылки и сообщения через ботов
+    # не должны попадать в лиды.
+    if getattr(message, "out", False):
+        return None
+    if getattr(message, "post", False):
+        return None
+    if getattr(message, "fwd_from", None):
+        return None
+    if getattr(message, "via_bot_id", None):
         return None
 
     text = normalize(getattr(message, "message", ""))
@@ -799,7 +959,15 @@ async def message_to_candidate(message, cutoff, state, source_kind):
         return None
 
     chat = await message.get_chat()
-    if not chat or not getattr(chat, "username", None):
+    if not is_allowed_chat(chat):
+        return None
+
+    try:
+        sender = await message.get_sender()
+    except Exception:
+        sender = None
+
+    if not is_allowed_sender(sender, self_user_id):
         return None
 
     unique_id = f"{getattr(chat, 'id', '')}:{message.id}"
@@ -809,11 +977,6 @@ async def message_to_candidate(message, cutoff, state, source_kind):
     classification = classify_lead(text)
     if not classification:
         return None
-
-    try:
-        sender = await message.get_sender()
-    except Exception:
-        sender = None
 
     return {
         "id": unique_id,
@@ -835,14 +998,14 @@ def merge_candidate(candidates, item):
         candidates[item["id"]] = item
 
 
-async def global_search_worker(client, state, cutoff):
+async def global_search_worker(client, state, cutoff, self_user_id):
     candidates = {}
 
     for query in SEARCH_QUERIES:
         print(f"[GLOBAL] {query}")
         try:
             async for message in client.iter_messages(None, search=query, limit=SEARCH_LIMIT):
-                item = await message_to_candidate(message, cutoff, state, "global")
+                item = await message_to_candidate(message, cutoff, state, "global", self_user_id)
                 merge_candidate(candidates, item)
 
         except FloodWaitError as exc:
@@ -859,7 +1022,7 @@ async def global_search_worker(client, state, cutoff):
     return candidates
 
 
-async def chat_scan_worker(client, state, cutoff):
+async def chat_scan_worker(client, state, cutoff, self_user_id):
     candidates = {}
 
     for chat_ref in TARGET_CHATS:
@@ -875,7 +1038,7 @@ async def chat_scan_worker(client, state, cutoff):
                     if date < cutoff:
                         break
 
-                item = await message_to_candidate(message, cutoff, state, "whitelist")
+                item = await message_to_candidate(message, cutoff, state, "whitelist", self_user_id)
                 merge_candidate(candidates, item)
 
         except FloodWaitError as exc:
@@ -888,13 +1051,13 @@ async def chat_scan_worker(client, state, cutoff):
     return candidates
 
 
-async def search_public_messages(client, state):
+async def search_public_messages(client, state, self_user_id):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
 
     # Два независимых поисковых воркера первого этапа.
     global_results, chat_results = await asyncio.gather(
-        global_search_worker(client, state, cutoff),
-        chat_scan_worker(client, state, cutoff),
+        global_search_worker(client, state, cutoff, self_user_id),
+        chat_scan_worker(client, state, cutoff, self_user_id),
     )
 
     candidates = {}
@@ -927,7 +1090,7 @@ async def async_main():
         me = await client.get_me()
         print("Connected as:", getattr(me, "first_name", ""), getattr(me, "username", ""))
 
-        leads = await search_public_messages(client, state)
+        leads = await search_public_messages(client, state, getattr(me, "id", None))
         print(f"Found {len(leads)} lead(s)")
 
         if not leads:
