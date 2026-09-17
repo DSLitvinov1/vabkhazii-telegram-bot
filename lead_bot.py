@@ -46,9 +46,13 @@ QUERY_DELAY_SECONDS = 0.20
 # Автопоиск новых публичных туристических групп Telegram.
 DISCOVERY_ENABLED = True
 DISCOVERY_LIMIT_PER_QUERY = 20
-MAX_DISCOVERED_CHATS = 30
-DISCOVERY_CHAT_SCAN_LIMIT = 180
+MAX_DISCOVERED_CHATS = 60
+DISCOVERY_CHAT_SCAN_LIMIT = 140
 DISCOVERY_QUERY_DELAY_SECONDS = 0.35
+
+# СНГ / русскоязычные рынки: расширяем поиск за пределы локальных чатов Абхазии.
+# Бот по-прежнему ищет только публичные Telegram-группы и НЕ вступает в них.
+CIS_ENABLED = True
 
 # Белый список именно туристических обсуждений, не рекламных каналов гидов.
 # Недоступный/переименованный чат просто будет пропущен с warning в Actions.
@@ -63,6 +67,7 @@ TARGET_CHATS = [
 # По этим фразам Telegram API ищет новые публичные группы.
 # Мы не вступаем в них автоматически: только читаем доступные публичные обсуждения.
 DISCOVERY_QUERIES = [
+    # Абхазия и города
     "Абхазия чат",
     "Абхазия туристы",
     "Абхазия путешествия",
@@ -73,6 +78,30 @@ DISCOVERY_QUERIES = [
     "Новый Афон чат",
     "Абхазия попутчики",
     "отдых в Абхазии",
+
+    # СНГ: группы путешественников и попутчиков.
+    # В общих СНГ-группах сообщение всё равно обязано иметь контекст Абхазии.
+    "Россия Абхазия путешествия",
+    "Беларусь Абхазия путешествия",
+    "Минск Абхазия",
+    "Беларусь путешествия чат",
+    "Казахстан Абхазия путешествия",
+    "Алматы Абхазия",
+    "Астана Абхазия",
+    "Казахстан путешествия чат",
+    "Кыргызстан Абхазия",
+    "Бишкек путешествия чат",
+    "Узбекистан Абхазия",
+    "Ташкент путешествия чат",
+    "Армения Абхазия путешествия",
+    "Ереван путешествия чат",
+    "Азербайджан Абхазия путешествия",
+    "Молдова Абхазия путешествия",
+    "Кишинев путешествия чат",
+    "Таджикистан Абхазия",
+    "Душанбе путешествия чат",
+    "Туркменистан Абхазия",
+    "Ашхабад путешествия чат",
 ]
 
 # Такие группы не добавляем в автопоиск: это обычно витрины продавцов.
@@ -81,6 +110,54 @@ COMMERCIAL_CHAT_MARKERS = [
     "аренда авто", "аренда машин", "бронирование", "туроператор",
     "турагентство", "туры по абхазии", "автопарк",
 ]
+
+# Маркеры общих туристических сообществ СНГ, которые можно сканировать даже
+# если в названии группы нет слова «Абхазия». Для таких групп контекст Абхазии
+# должен присутствовать уже в самом сообщении пользователя.
+CIS_TRAVEL_CHAT_MARKERS = [
+    "путешеств", "турист", "отдых", "попутчик", "travel", "trip", "поездк",
+]
+
+CIS_SOURCE_MARKERS = [
+    "россия", "москва", "петербург", "спб", "ростов", "краснодар",
+    "беларус", "минск", "гомель", "брест", "витебск", "гродно", "могил",
+    "казахстан", "алматы", "астана", "караганда", "шымкент",
+    "кыргыз", "киргиз", "бишкек", "ош",
+    "узбекистан", "ташкент", "самарканд",
+    "армения", "ереван",
+    "азербайджан", "баку",
+    "молдова", "кишинев", "кишинёв",
+    "таджикистан", "душанбе",
+    "туркменистан", "ашхабад",
+]
+
+# Определение страны/рынка для карточки лида. Это НЕ персональный профиль —
+# просто география, явно указанная в сообщении или названии публичной группы.
+CIS_ORIGINS = {
+    "Россия": [
+        "россия", "москва", "санкт-петербург", "петербург", "спб",
+        "ростов-на-дону", "ростов", "воронеж", "ставрополь", "волгоград",
+        "самара", "казань", "екатеринбург", "новосибирск", "красноярск",
+        "пермь", "уфа", "челябинск", "омск", "тюмень", "саратов",
+        "нижний новгород",
+    ],
+    "Беларусь": [
+        "беларусь", "белоруссия", "минск", "гомель", "брест",
+        "витебск", "гродно", "могилев", "могилёв",
+    ],
+    "Казахстан": [
+        "казахстан", "алматы", "астана", "караганда", "шымкент",
+        "актобе", "атырау", "павлодар", "костанай", "семей",
+        "усть-каменогорск",
+    ],
+    "Кыргызстан": ["кыргызстан", "киргизия", "бишкек", "ош"],
+    "Узбекистан": ["узбекистан", "ташкент", "самарканд", "бухара"],
+    "Армения": ["армения", "ереван", "гюмри"],
+    "Азербайджан": ["азербайджан", "баку", "ганжа"],
+    "Молдова": ["молдова", "кишинев", "кишинёв", "бэлць", "бельцы"],
+    "Таджикистан": ["таджикистан", "душанбе", "худжанд"],
+    "Туркменистан": ["туркменистан", "ашхабад"],
+}
 
 # Наши источники и технические аккаунты никогда не считаем лидами.
 BLOCKED_USERNAMES = {
@@ -197,6 +274,31 @@ SEARCH_QUERIES = [
     "трансфер с детьми Абхазия",
     "трансфер детское кресло Абхазия",
     "трансфер много багажа Абхазия",
+
+    # СНГ — прямые запросы и планирование поездки в Абхазию
+    "из Москвы в Абхазию трансфер",
+    "Москва Абхазия как добраться",
+    "из Беларуси в Абхазию",
+    "Минск Абхазия как добраться",
+    "Беларусь Абхазия отдых",
+    "из Казахстана в Абхазию",
+    "Алматы Абхазия как добраться",
+    "Астана Абхазия как добраться",
+    "Казахстан Абхазия отдых",
+    "Бишкек Абхазия как добраться",
+    "Кыргызстан Абхазия отдых",
+    "Ташкент Абхазия как добраться",
+    "Узбекистан Абхазия отдых",
+    "Ереван Абхазия как добраться",
+    "Армения Абхазия отдых",
+    "Баку Абхазия как добраться",
+    "Азербайджан Абхазия отдых",
+    "Кишинев Абхазия как добраться",
+    "Молдова Абхазия отдых",
+    "Душанбе Абхазия как добраться",
+    "Таджикистан Абхазия отдых",
+    "Ашхабад Абхазия как добраться",
+    "Туркменистан Абхазия отдых",
 ]
 
 
@@ -677,7 +779,16 @@ def is_allowed_sender(sender, self_user_id):
 
 
 def is_discovery_candidate_chat(chat):
-    """Публичная некоммерческая группа, найденная через Telegram Search."""
+    """
+    Публичная некоммерческая группа, найденная через Telegram Search.
+
+    Принимаем два типа источников:
+    1) группы про Абхазию и её города;
+    2) общие туристические/попутческие группы СНГ.
+
+    Для второго типа сам текст сообщения всё равно должен содержать
+    контекст Абхазии — название общей группы его не подменяет.
+    """
     if not is_allowed_chat(chat):
         return False
 
@@ -691,12 +802,20 @@ def is_discovery_candidate_chat(chat):
     if any(marker in combined for marker in COMMERCIAL_CHAT_MARKERS):
         return False
 
-    # Группа должна быть тематически связана с Абхазией или её городами.
-    context_markers = [
+    abkhazia_markers = [
         "абхаз", "гагр", "пицунд", "сухум", "афон", "гудаут",
         "цандрыпш", "псоу", "рица",
     ]
-    return any(marker in combined for marker in context_markers)
+    if any(marker in combined for marker in abkhazia_markers):
+        return True
+
+    if CIS_ENABLED:
+        has_cis = any(marker in combined for marker in CIS_SOURCE_MARKERS)
+        has_travel = any(marker in combined for marker in CIS_TRAVEL_CHAT_MARKERS)
+        if has_cis and has_travel:
+            return True
+
+    return False
 
 
 async def discover_public_tourist_chats(client):
@@ -761,6 +880,28 @@ async def discover_public_tourist_chats(client):
 # =========================================================
 # EXTRACTION
 # =========================================================
+
+def detect_cis_origin(text, source_context=""):
+    """
+    Возвращает страну/рынок СНГ, явно упомянутый в сообщении или названии
+    публичного источника. Источник используется только как запасной вариант.
+    """
+    if not CIS_ENABLED:
+        return None
+
+    text_lower = normalize(text).lower()
+    source_lower = normalize(source_context).lower()
+
+    for country, markers in CIS_ORIGINS.items():
+        if any(marker in text_lower for marker in markers):
+            return country
+
+    for country, markers in CIS_ORIGINS.items():
+        if any(marker in source_lower for marker in markers):
+            return country
+
+    return None
+
 
 def detect_city(text):
     lower = text.lower()
@@ -1112,6 +1253,11 @@ def classify_lead_detailed(text, source_context=""):
     score = 35
     reasons = ["автор — человек", "прямой запрос услуги"]
 
+    cis_origin = detect_cis_origin(text, source_context)
+    if cis_origin:
+        score += 4
+        reasons.append(f"СНГ: {cis_origin}")
+
     hot_hits = [phrase for phrase in HOT_PHRASES if phrase in lower]
     urgent_hits = [phrase for phrase in URGENT_PHRASES if phrase in lower]
 
@@ -1271,6 +1417,7 @@ def make_card(text, entity, sender, message_id, date, classification):
     baggage = detect_baggage(text)
     flight_train = detect_flight_train(text)
     places = detect_all_places(text)
+    cis_origin = detect_cis_origin(text, source_title(entity))
     link = build_message_link(entity, message_id)
     sender_name = None
     sender_username = None
@@ -1296,6 +1443,8 @@ def make_card(text, entity, sender, message_id, date, classification):
         lines.append(f"👤 Автор: <b>{html.escape(sender_name)}</b>")
     if sender_username:
         lines.append(f"🔹 Telegram: @{html.escape(sender_username)}")
+    if cis_origin:
+        lines.append(f"🌍 СНГ / откуда: <b>{html.escape(cis_origin)}</b>")
     if city:
         lines.append(f"📍 Город: <b>{html.escape(city)}</b>")
     if route:
@@ -1771,14 +1920,14 @@ def send_test_pair():
     if not card_message_id:
         raise RuntimeError("Test card was sent without message_id")
 
+    # Отдельное обычное сообщение БЕЗ reply/цитаты — так копируется ровно текст.
     send_private_message(
         draft,
-        reply_to_message_id=card_message_id,
         parse_html=False,
     )
 
     print("TEST_MODE: test card sent")
-    print("TEST_MODE: separate copyable reply sent")
+    print("TEST_MODE: separate standalone copyable draft sent")
     print("TEST_MODE: state/history unchanged")
 
 
@@ -1830,9 +1979,9 @@ async def async_main():
                 )
                 if draft:
                     try:
+                        # Черновик идёт отдельным обычным сообщением без reply/цитаты.
                         send_private_message(
                             draft,
-                            reply_to_message_id=card_message_id,
                             parse_html=False,
                         )
                     except Exception as draft_exc:
