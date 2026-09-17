@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import html
 import json
 import os
@@ -53,6 +54,50 @@ DISCOVERY_QUERY_DELAY_SECONDS = 0.35
 # СНГ / русскоязычные рынки: расширяем поиск за пределы локальных чатов Абхазии.
 # Бот по-прежнему ищет только публичные Telegram-группы и НЕ вступает в них.
 CIS_ENABLED = True
+
+# Публичные внешние площадки/форумы. Проверяются реже Telegram,
+# чтобы не создавать лишнюю нагрузку на сайты. Используются только
+# открытые страницы без авторизации и без обхода ограничений доступа.
+EXTERNAL_WEB_ENABLED = True
+EXTERNAL_SCAN_INTERVAL_MINUTES = 30
+EXTERNAL_MAX_ITEMS_PER_SOURCE = 40
+EXTERNAL_HTTP_TIMEOUT_SECONDS = 20
+
+# Первый запуск каждого источника создаёт базовую точку и не шлёт старые темы.
+EXTERNAL_BOOTSTRAP_SEND = False
+
+EXTERNAL_SOURCES = [
+    {
+        "key": "travelask_abkhazia",
+        "name": "TravelAsk — Абхазия",
+        "url": "https://travelask.ru/questions/location/abkhazia",
+        "kind": "travelask",
+    },
+    {
+        "key": "abhazia_forum",
+        "name": "Абхазия — форум туриста",
+        "url": "https://www.abhazia.com/phpBB2/",
+        "kind": "abhazia_forum",
+    },
+    {
+        "key": "awd_abkhazia",
+        "name": "Форум Винского — Абхазия",
+        "url": "https://forum.awd.ru/viewforum.php?f=1625",
+        "kind": "awd_forum",
+    },
+    {
+        "key": "tripadvisor_abkhazia",
+        "name": "Tripadvisor — форум Абхазии",
+        "url": "https://www.tripadvisor.ru/ShowForum-g3575865-i30788-Abkhazia.html",
+        "kind": "tripadvisor",
+    },
+    {
+        "key": "babyblog_travel",
+        "name": "Babyblog — путешествия",
+        "url": "https://www.babyblog.ru/community/travel",
+        "kind": "babyblog",
+    },
+]
 
 # Белый список именно туристических обсуждений, не рекламных каналов гидов.
 # Недоступный/переименованный чат просто будет пропущен с warning в Actions.
@@ -535,14 +580,21 @@ ROUTES = {
 
 def load_state():
     try:
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except Exception:
-        return {"seen": []}
+        state = {}
+
+    state.setdefault("seen", [])
+    state.setdefault("external_seen", [])
+    state.setdefault("external_initialized", {})
+    state.setdefault("external_last_scan", None)
+    return state
 
 
 def save_state(state):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     state["seen"] = state.get("seen", [])[-3000:]
+    state["external_seen"] = state.get("external_seen", [])[-7000:]
     STATE_FILE.write_text(
         json.dumps(state, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -1491,6 +1543,309 @@ def make_card(text, entity, sender, message_id, date, classification):
 
 
 # =========================================================
+# EXTERNAL PUBLIC WEB SOURCES
+# =========================================================
+
+def external_item_id(source_key, url):
+    digest = hashlib.sha1(url.encode("utf-8", errors="ignore")).hexdigest()[:24]
+    return f"web:{source_key}:{digest}"
+
+
+def clean_html_fragment(value):
+    value = re.sub(r"(?is)<script\b[^>]*>.*?</script>", " ", value or "")
+    value = re.sub(r"(?is)<style\b[^>]*>.*?</style>", " ", value)
+    value = re.sub(r"(?is)<[^>]+>", " ", value)
+    return normalize(html.unescape(value))
+
+
+def normalize_external_url(base_url, href):
+    if not href:
+        return None
+    absolute = urllib.parse.urljoin(base_url, html.unescape(href))
+    try:
+        parsed = urllib.parse.urlsplit(absolute)
+        if parsed.scheme not in {"http", "https"}:
+            return None
+        query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        # phpBB often adds a random sid, which breaks deduplication.
+        query = [(k, v) for k, v in query if k.lower() != "sid"]
+        return urllib.parse.urlunsplit((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            urllib.parse.urlencode(query, doseq=True),
+            "",
+        ))
+    except Exception:
+        return absolute.split("#", 1)[0]
+
+
+def fetch_public_html(url):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/152.0 Safari/537.36 VAbkhaziiLeadMonitor/1.0"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.6",
+            "Cache-Control": "no-cache",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=EXTERNAL_HTTP_TIMEOUT_SECONDS) as response:
+        raw = response.read(2_500_000)
+        content_type = response.headers.get("Content-Type", "")
+        charset_match = re.search(r"charset=([\w\-]+)", content_type, flags=re.I)
+        charset = charset_match.group(1) if charset_match else "utf-8"
+        try:
+            return raw.decode(charset, errors="replace")
+        except LookupError:
+            return raw.decode("utf-8", errors="replace")
+
+
+def extract_anchor_items(page_html, base_url, href_test):
+    items = []
+    seen_urls = set()
+    anchor_re = re.compile(
+        r"(?is)<a\b[^>]*?href\s*=\s*[\"'](?P<href>[^\"']+)[\"'][^>]*>(?P<label>.*?)</a>"
+    )
+    for match in anchor_re.finditer(page_html or ""):
+        href = html.unescape(match.group("href"))
+        label = clean_html_fragment(match.group("label"))
+        if not href_test(href, label):
+            continue
+        url = normalize_external_url(base_url, href)
+        if not url or url in seen_urls:
+            continue
+        if len(label) < 8:
+            continue
+        seen_urls.add(url)
+        items.append({"url": url, "text": label})
+        if len(items) >= EXTERNAL_MAX_ITEMS_PER_SOURCE:
+            break
+    return items
+
+
+def parse_external_source(source, page_html):
+    base_url = source["url"]
+    kind = source["kind"]
+
+    if kind == "travelask":
+        def test(href, label):
+            low = href.lower()
+            return (
+                "/questions/" in low
+                and "/questions/location/" not in low
+                and "/questions/new" not in low
+                and re.search(r"/questions/\d+", low) is not None
+            )
+        return extract_anchor_items(page_html, base_url, test)
+
+    if kind == "abhazia_forum":
+        generic = {"последние сообщения", "вперёд", "назад", "last", "first"}
+        def test(href, label):
+            low = href.lower()
+            return (
+                ("/threads/" in low or "showthread.php" in low)
+                and label.lower() not in generic
+                and len(label) >= 10
+            )
+        return extract_anchor_items(page_html, base_url, test)
+
+    if kind == "awd_forum":
+        generic = {
+            "последнее сообщение", "вернуться к началу", "следующая", "предыдущая",
+            "1", "2", "3", "4", "5",
+        }
+        def test(href, label):
+            low = href.lower()
+            return (
+                "viewtopic.php" in low
+                and "t=" in low
+                and label.lower() not in generic
+                and len(label) >= 10
+            )
+        return extract_anchor_items(page_html, base_url, test)
+
+    if kind == "tripadvisor":
+        def test(href, label):
+            return "showtopic-" in href.lower() and len(label) >= 10
+        return extract_anchor_items(page_html, base_url, test)
+
+    if kind == "babyblog":
+        def test(href, label):
+            low = href.lower()
+            return (
+                "/community/travel/post/" in low
+                and len(label) >= 10
+            )
+        return extract_anchor_items(page_html, base_url, test)
+
+    return []
+
+
+def should_scan_external_now(state):
+    if not EXTERNAL_WEB_ENABLED:
+        return False
+    last = state.get("external_last_scan")
+    if not last:
+        return True
+    try:
+        dt = datetime.fromisoformat(last)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - dt >= timedelta(minutes=EXTERNAL_SCAN_INTERVAL_MINUTES)
+    except Exception:
+        return True
+
+
+def make_external_card(item):
+    classification = item["classification"]
+    lead_type = classification["lead_type"]
+    text = item["text"]
+    lines = [
+        f"{classification['level']} <b>ВНЕШНЯЯ ПЛОЩАДКА</b>",
+        lead_type_label(lead_type),
+        "",
+        f"⭐ Оценка: <b>{classification['score']}</b>",
+        f"🌐 Источник: <b>{html.escape(item['source_name'])}</b>",
+    ]
+    cis_origin = detect_cis_origin(text, item["source_name"])
+    if cis_origin:
+        lines.append(f"🌍 СНГ / откуда: <b>{html.escape(cis_origin)}</b>")
+    city = detect_city(text)
+    route = detect_route(text)
+    if city:
+        lines.append(f"📍 Город: <b>{html.escape(city)}</b>")
+    if route:
+        lines.append(f"🏞 Интерес: <b>{html.escape(route)}</b>")
+    if classification.get("reasons"):
+        lines.append("🎯 Сигналы: " + html.escape(", ".join(classification["reasons"])))
+    lines += [
+        "",
+        "💬 <b>Публикация / тема:</b>",
+        html.escape(text[:1400]),
+        "",
+        f'<a href="{html.escape(item["url"])}">🔗 Открыть исходную страницу</a>',
+    ]
+    card = "\n".join(lines)
+    return card[:3900]
+
+
+def bump_external_source(stats, source_name, field, amount=1):
+    ext = stats.setdefault("external_sources", {}).setdefault(
+        source_name,
+        {"seen": 0, "new": 0, "accepted": 0, "planning": 0, "errors": 0, "baseline": 0},
+    )
+    ext[field] = ext.get(field, 0) + amount
+
+
+def scan_external_web_sources(state, stats):
+    # Checks public pages without login and without bypassing access controls.
+    direct = []
+    planning = []
+
+    if not should_scan_external_now(state):
+        print("[EXTERNAL] skipped: next web scan is not due yet")
+        return direct, planning
+
+    state.setdefault("external_seen", [])
+    state.setdefault("external_initialized", {})
+    seen_set = set(state.get("external_seen", []))
+
+    print("")
+    print("=" * 68)
+    print("EXTERNAL PUBLIC SOURCES")
+    print("=" * 68)
+
+    for source in EXTERNAL_SOURCES:
+        key = source["key"]
+        name = source["name"]
+        print(f"[EXTERNAL] {name}: {source['url']}")
+        try:
+            page_html = fetch_public_html(source["url"])
+            items = parse_external_source(source, page_html)
+            bump_stat(stats, "external_pages_ok")
+            bump_external_source(stats, name, "seen", len(items))
+
+            item_ids = [external_item_id(key, item["url"]) for item in items]
+            initialized = bool(state["external_initialized"].get(key))
+
+            if not initialized and not EXTERNAL_BOOTSTRAP_SEND:
+                for item_id in item_ids:
+                    if item_id not in seen_set:
+                        state["external_seen"].append(item_id)
+                        seen_set.add(item_id)
+                state["external_initialized"][key] = datetime.now(timezone.utc).isoformat()
+                bump_stat(stats, "external_baseline", len(items))
+                bump_external_source(stats, name, "baseline", len(items))
+                print(f"[EXTERNAL BASELINE] {name}: remembered {len(items)} existing item(s)")
+                continue
+
+            if not initialized:
+                state["external_initialized"][key] = datetime.now(timezone.utc).isoformat()
+
+            for item in items:
+                item_id = external_item_id(key, item["url"])
+                if item_id in seen_set:
+                    continue
+
+                bump_stat(stats, "external_new")
+                bump_external_source(stats, name, "new")
+
+                text = normalize(item["text"])
+                classification, reject_reason = classify_lead_detailed(
+                    text,
+                    source_context=f"{name} Абхазия туристический форум",
+                )
+
+                # Remember every new public URL, even if it is not a lead.
+                state["external_seen"].append(item_id)
+                seen_set.add(item_id)
+
+                if not classification:
+                    if reject_reason:
+                        bump_stat(stats, reject_reason)
+                    continue
+
+                candidate = {
+                    "id": item_id,
+                    "text": text,
+                    "date": datetime.now(timezone.utc),
+                    "classification": classification,
+                    "source_kind": "external_web",
+                    "source_name": name,
+                    "url": item["url"],
+                }
+
+                if classification.get("bucket") == "planning":
+                    planning.append(candidate)
+                    bump_stat(stats, "planning_candidate")
+                    bump_stat(stats, "external_planning")
+                    bump_external_source(stats, name, "planning")
+                else:
+                    direct.append(candidate)
+                    bump_stat(stats, "accepted")
+                    bump_stat(stats, "external_accepted")
+                    bump_external_source(stats, name, "accepted")
+
+        except Exception as exc:
+            bump_stat(stats, "external_errors")
+            bump_external_source(stats, name, "errors")
+            print(f"[EXTERNAL WARNING] {name}: {exc}")
+
+    state["external_last_scan"] = datetime.now(timezone.utc).isoformat()
+    print("=" * 68)
+    print("")
+
+    direct.sort(key=lambda item: item["classification"]["score"], reverse=True)
+    return direct[:MAX_LEADS_PER_RUN], planning[:12]
+
+
+# =========================================================
 # SEARCH
 # =========================================================
 
@@ -1519,7 +1874,14 @@ def new_filter_stats():
         "source_context_used": 0,
         "low_score": 0,
         "accepted": 0,
+        "external_pages_ok": 0,
+        "external_baseline": 0,
+        "external_new": 0,
+        "external_accepted": 0,
+        "external_planning": 0,
+        "external_errors": 0,
         "sources": {},
+        "external_sources": {},
     }
 
 
@@ -1579,6 +1941,28 @@ def print_filter_stats(stats):
                 f"accepted={values.get('accepted', 0)}, "
                 f"planning={values.get('planning', 0)}"
             )
+    print("")
+    print("EXTERNAL SOURCE STATS")
+    print(f"  Pages fetched OK: {stats.get('external_pages_ok', 0)}")
+    print(f"  Baseline items:   {stats.get('external_baseline', 0)}")
+    print(f"  New items:        {stats.get('external_new', 0)}")
+    print(f"  Direct leads:     {stats.get('external_accepted', 0)}")
+    print(f"  Planning:         {stats.get('external_planning', 0)}")
+    print(f"  Errors:           {stats.get('external_errors', 0)}")
+    for source_name, values in sorted(
+        stats.get("external_sources", {}).items(),
+        key=lambda item: item[1].get("accepted", 0),
+        reverse=True,
+    ):
+        print(
+            f"  {source_name}: "
+            f"seen={values.get('seen', 0)}, "
+            f"new={values.get('new', 0)}, "
+            f"accepted={values.get('accepted', 0)}, "
+            f"planning={values.get('planning', 0)}, "
+            f"baseline={values.get('baseline', 0)}, "
+            f"errors={values.get('errors', 0)}"
+        )
     print("=" * 68)
     print("")
 
@@ -1865,13 +2249,24 @@ def make_planning_digest(planning):
 
     for idx, item in enumerate(planning[:10], start=1):
         text = item["text"]
+        short = text[:260] + ("…" if len(text) > 260 else "")
+
+        if item.get("source_kind") == "external_web":
+            source_name = item.get("source_name", "Внешняя площадка")
+            link = item.get("url")
+            lines.append(f"<b>{idx}. Внешняя площадка</b> · {html.escape(source_name)}")
+            lines.append(html.escape(short))
+            if link:
+                lines.append(f'<a href="{html.escape(link)}">Открыть страницу</a>')
+            lines.append("")
+            continue
+
         chat = item["chat"]
         sender = item["sender"]
         link = build_message_link(chat, item["message_id"])
         sender_name = " ".join(
             part for part in [getattr(sender, "first_name", None), getattr(sender, "last_name", None)] if part
         ).strip() or "Пользователь"
-        short = text[:260] + ("…" if len(text) > 260 else "")
         lines.append(f"<b>{idx}. {html.escape(sender_name)}</b> · {html.escape(source_title(chat))}")
         lines.append(html.escape(short))
         if link:
@@ -1953,6 +2348,23 @@ async def async_main():
         print("Connected as:", getattr(me, "first_name", ""), getattr(me, "username", ""))
 
         leads, planning, stats = await search_public_messages(client, state, getattr(me, "id", None))
+
+        # Внешние форумы/сайты проверяются отдельным более редким циклом.
+        external_direct, external_planning = await asyncio.to_thread(
+            scan_external_web_sources,
+            state,
+            stats,
+        )
+        leads.extend(external_direct)
+        planning.extend(external_planning)
+        leads.sort(
+            key=lambda item: (item["classification"]["score"], item["date"]),
+            reverse=True,
+        )
+        planning.sort(key=lambda item: item["date"], reverse=True)
+        leads = leads[:MAX_LEADS_PER_RUN]
+        planning = planning[:12]
+
         print_filter_stats(stats)
         print(f"Found {len(leads)} direct lead(s)")
         print(f"Found {len(planning)} planning candidate(s)")
@@ -1960,14 +2372,17 @@ async def async_main():
         sent = 0
         for lead in leads:
             try:
-                card = make_card(
-                    lead["text"],
-                    lead["chat"],
-                    lead["sender"],
-                    lead["message_id"],
-                    lead["date"],
-                    lead["classification"],
-                )
+                if lead.get("source_kind") == "external_web":
+                    card = make_external_card(lead)
+                else:
+                    card = make_card(
+                        lead["text"],
+                        lead["chat"],
+                        lead["sender"],
+                        lead["message_id"],
+                        lead["date"],
+                        lead["classification"],
+                    )
                 card_message_id = send_private_message(card)
                 state.setdefault("seen", []).append(lead["id"])
 
