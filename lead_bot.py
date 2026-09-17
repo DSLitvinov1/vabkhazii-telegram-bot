@@ -481,15 +481,51 @@ CARGO_PHRASES = [
 # Сильные сигналы прямой заявки на услугу. Такие сообщения могут попасть
 # в основной поток даже без слова «экскурсия» или «трансфер».
 DIRECT_SERVICE_PHRASES = [
+    # Прямой запрос услуги: человек явно ищет/заказывает именно нашу услугу.
     "нужен трансфер", "нужна машина", "нужен водитель", "нужна экскурсия", "нужен гид",
     "ищу трансфер", "ищем трансфер", "ищу экскурсию", "ищем экскурсию", "ищу гида", "ищем гида",
+    "хочу заказать трансфер", "хотим заказать трансфер", "заказать трансфер",
+    "хочу заказать экскурсию", "хотим заказать экскурсию", "заказать экскурсию",
+    "можно заказать трансфер", "можно ли заказать трансфер", "где заказать трансфер",
+    "можно заказать экскурсию", "можно ли заказать экскурсию", "где заказать экскурсию",
     "кто отвезет", "кто отвезёт", "кто довезет", "кто довезёт", "кто заберет", "кто заберёт",
-    "кто встретит", "кто свозит", "кто возит", "можно заказать", "где заказать",
+    "кто встретит", "кто свозит", "кто может свозить", "кто может отвезти", "кто может забрать",
+    "кто возит на рицу", "кто возит на мзы", "кто организует экскурсию",
+    "есть ли трансфер", "есть трансфер", "есть ли экскурсия", "есть экскурсия",
+    "сколько стоит трансфер", "сколько будет стоить трансфер", "цена трансфера", "стоимость трансфера",
+    "сколько стоит экскурсия", "сколько будет стоить экскурсия", "цена экскурсии", "стоимость экскурсии",
+    "сколько стоит такси", "сколько будет стоить такси",
+    "нужен минивэн", "нужен минивен", "нужен микроавтобус",
+]
+
+# Слабые туристические запросы: это интерес/планирование, но ещё не заказ услуги.
+PLANNING_INTENT_PHRASES = [
     "как добраться", "как доехать", "на чем добраться", "на чём добраться",
-    "кто едет", "едет кто", "кто-нибудь едет", "кто нибудь едет", "ищу попутчика", "ищем попутчиков",
-    "ищу компанию", "ищем компанию",
-    "нужно в ", "надо в ", "хочу на рицу", "хотим на рицу", "хотят на рицу",
-    "хочу на мзы", "хотим на мзы", "хотят на мзы", "можно ли совместить",
+    "куда поехать", "куда съездить", "куда сходить", "что посмотреть", "что посетить",
+    "что посоветуете", "что рекомендуете", "куда лучше поехать",
+    "кто едет", "едет кто", "кто-нибудь едет", "кто нибудь едет",
+    "ищу попутчика", "ищем попутчиков", "ищу попутчиков", "ищем попутчика",
+    "ищу компанию", "ищем компанию", "кто с нами", "кто поедет с нами",
+    "хочу на рицу", "хотим на рицу", "хотят на рицу",
+    "хочу на мзы", "хотим на мзы", "хотят на мзы",
+    "хочу в новый афон", "хотим в новый афон",
+]
+
+# Дополнительные признаки, что сообщение действительно про заказ услуги.
+SERVICE_NOUNS = [
+    "трансфер", "такси", "машин", "водител", "минивэн", "минивен", "микроавтобус",
+    "экскурс", "гид", "своз", "отвез", "довез", "забер", "встрет",
+]
+
+SERVICE_REQUEST_WORDS = [
+    "нуж", "ищ", "заказ", "кто может", "кто возит", "кто свозит", "кто отвез", "кто довез",
+    "кто забер", "кто встрет", "сколько стоит", "сколько будет стоить", "цена", "стоимость",
+    "есть ли", "можно ли", "можно заказать", "посоветуйте гида", "порекомендуйте гида",
+]
+
+ROUTE_DISCUSSION_MARKERS = [
+    "км", "километр", "самолеты не летают", "самолёты не летают", "дорога", "трасса",
+    "маршрутка", "автобус", "поезд", "граница", "переходите", "ехать примерно",
 ]
 
 # Фразы движения помогают отличать трансфер/попутчиков от экскурсии.
@@ -1286,42 +1322,112 @@ def looks_informational_only(text):
     return info_hits >= 1
 
 
-def is_planning_request(text):
-    lower = text.lower()
-    if any(phrase in lower for phrase in DIRECT_SERVICE_PHRASES):
-        return False
-    return any(phrase in lower for phrase in PLANNING_PHRASES)
-
-
-def has_direct_service_intent(text):
-    lower = text.lower()
+def has_explicit_service_request(text):
+    """Строгий признак прямой заявки именно на услугу."""
+    lower = normalize(text).lower()
 
     if any(phrase in lower for phrase in DIRECT_SERVICE_PHRASES):
         return True
 
-    places = detect_all_places(text)
-    has_movement = any(phrase in lower for phrase in MOVEMENT_PHRASES)
-
-    # Два географических пункта + движение = практически готовый трансфер.
-    if len(places) >= 2 and has_movement:
+    # Естественные формулировки: «кто сегодня сможет отвезти...»,
+    # «может кто забрать из аэропорта?» и т.п.
+    if re.search(r"\bкто\b.{0,35}\b(?:сможет|может)?\s*(?:отвез|довез|забер|встрет|своз)", lower):
+        return True
+    if re.search(r"\b(?:может|сможет)\b.{0,20}\b(?:отвезти|довезти|забрать|встретить|свозить)", lower):
         return True
 
-    # «Сухум — Гагра едет кто-нибудь?» и похожие короткие запросы.
-    if any(phrase in lower for phrase in ["кто едет", "едет кто", "кто-нибудь едет", "кто нибудь едет"]):
-        if places or has_abkhazia_context(text):
-            return True
+    has_service = any(marker in lower for marker in SERVICE_NOUNS)
+    has_request = any(marker in lower for marker in SERVICE_REQUEST_WORDS)
+    if has_service and has_request:
+        return True
 
-    # Явная экскурсионная потребность.
-    if any(phrase in lower for phrase in [
-        "куда съездить", "куда поехать", "что посмотреть", "что посетить",
-        "какую экскурсию", "посоветуйте экскурсию", "нужен гид", "нужна экскурсия",
-    ]):
-        # Не считаем чистый вопрос о погоде/документах прямой заявкой.
-        if not looks_informational_only(text):
-            return True
+    # Явная формулировка с услугой и вопросом о цене.
+    if has_service and "?" in text and any(word in lower for word in ["сколько", "цена", "стоимость"]):
+        return True
 
     return False
 
+
+def looks_like_route_discussion_only(text):
+    """Обсуждение дороги/расстояния без запроса услуги не является лидом."""
+    lower = normalize(text).lower()
+    if has_explicit_service_request(text):
+        return False
+
+    markers = sum(1 for marker in ROUTE_DISCUSSION_MARKERS if marker in lower)
+    if markers >= 1 and not any(phrase in lower for phrase in PLANNING_INTENT_PHRASES):
+        return True
+
+    # Фразы вида «150 км, это из Сухума до Сочи» — обычное обсуждение.
+    if re.search(r"\d{2,4}\s*км", lower) and not any(
+        word in lower for word in ["нуж", "ищ", "заказ", "кто может", "сколько стоит"]
+    ):
+        return True
+
+    return False
+
+
+def is_planning_request(text):
+    lower = normalize(text).lower()
+
+    # Прямой заказ услуги всегда важнее planning.
+    if has_explicit_service_request(text):
+        return False
+
+    if any(phrase in lower for phrase in PLANNING_PHRASES):
+        return True
+
+    if any(phrase in lower for phrase in PLANNING_INTENT_PHRASES):
+        return True
+
+    # Будущая поездка + Абхазия/город = planning даже без точной ключевой фразы.
+    future_markers = [
+        "собираемся", "планируем", "поедем", "едем", "приезжаем", "прилетаем",
+        "будем", "хотим приехать", "хочу приехать", "на выходных", "в отпуск",
+        "в начале", "в конце", "в октябре", "в сентябре", "в ноябре",
+    ]
+    if any(marker in lower for marker in future_markers) and (
+        has_abkhazia_context(text) or detect_city(text) or detect_route(text)
+    ):
+        return True
+
+    return False
+
+
+def has_direct_service_intent(text):
+    # Теперь это строгое понятие: «как добраться», «кто едет», «куда поехать»
+    # без запроса машины/трансфера/экскурсии не считаются прямым лидом.
+    return has_explicit_service_request(text)
+
+
+def strong_context_signals(text):
+    """Контекст, повышающий прямую заявку до 🔥 горячей."""
+    lower = normalize(text).lower()
+    signals = []
+
+    if detect_date_hint(text) or detect_urgency(text) or detect_time_hint(text):
+        signals.append("есть дата/срочность")
+
+    places = detect_all_places(text)
+    if len(places) >= 2:
+        signals.append("понятен маршрут")
+
+    if detect_people(text):
+        signals.append("указано количество людей")
+
+    if detect_children(text):
+        signals.append("есть дети")
+
+    if detect_baggage(text):
+        signals.append("есть багаж")
+
+    if any(marker in lower for marker in ["аэропорт", "вокзал", "псоу", "границ"]):
+        signals.append("конкретная точка поездки")
+
+    if detect_route(text):
+        signals.append("конкретная экскурсия/маршрут")
+
+    return signals
 
 def detect_lead_type(text):
     lower = normalize(text).lower()
@@ -1399,7 +1505,7 @@ def detect_lead_type(text):
 
 
 def classify_lead_detailed(text, source_context=""):
-    lower = text.lower()
+    lower = normalize(text).lower()
 
     # Возвращаем не только результат, но и причину отсева.
     if looks_like_job(text):
@@ -1422,86 +1528,79 @@ def classify_lead_detailed(text, source_context=""):
     if not text_has_context and not source_has_context:
         return None, "no_abkhazia_context"
 
-    # Планирование поездки сохраняем отдельно, но не отправляем как обычный лид.
-    if is_planning_request(text):
-        return {
-            "score": 20,
-            "level": "🟡 ПЛАНИРУЕТ ПОЕЗДКУ",
-            "lead_type": "planning",
-            "reasons": ["планирует поездку", "нет прямого запроса услуги"],
-            "bucket": "planning",
-        }, None
+    # Обычное обсуждение дороги/расстояния не превращаем в заявку.
+    if looks_like_route_discussion_only(text):
+        return None, "route_discussion_only"
 
-    # Чистые справочные вопросы не идут в поток продаж.
-    if looks_informational_only(text):
-        return None, "informational_only"
+    # Сначала определяем строгий прямой запрос услуги.
+    direct_intent = has_explicit_service_request(text)
 
-    # Для основного потока теперь обязательно прямое намерение заказать/найти услугу.
-    if not has_direct_service_intent(text):
+    if not direct_intent:
+        # Планирование: едет/собирается/ищет компанию/спрашивает маршрут,
+        # но пока не просит конкретную платную услугу.
+        if is_planning_request(text):
+            reasons = ["планирует поездку", "нет прямого запроса услуги"]
+            if any(p in lower for p in ["кто едет", "ищу компанию", "ищем компанию", "ищу попут", "ищем попут"]):
+                reasons.append("ищет попутчиков/компанию")
+            if detect_route(text):
+                reasons.append("есть интерес к маршруту")
+            return {
+                "score": 30,
+                "level": "🟠 ПЛАНИРУЕТ ПОЕЗДКУ",
+                "lead_type": "planning",
+                "reasons": reasons,
+                "bucket": "planning",
+                "temperature": "planning",
+            }, None
+
+        # Чистые справочные вопросы без коммерческого намерения не идут в поток.
+        if looks_informational_only(text):
+            return None, "informational_only"
+
         return None, "no_direct_service_intent"
 
     lead_type = detect_lead_type(text)
-    if lead_type == "unknown":
+    if lead_type == "unknown" or lead_type == "companions":
+        # Попутчики без запроса услуги должны были уйти в planning.
+        # Если тип не распознан — не рискуем засорять поток.
         return None, "unknown_service_type"
 
-    score = 35
+    score = 55
     reasons = ["автор — человек", "прямой запрос услуги"]
 
     cis_origin = detect_cis_origin(text, source_context)
     if cis_origin:
-        score += 4
+        score += 3
         reasons.append(f"СНГ: {cis_origin}")
 
-    hot_hits = [phrase for phrase in HOT_PHRASES if phrase in lower]
-    urgent_hits = [phrase for phrase in URGENT_PHRASES if phrase in lower]
-
-    if hot_hits:
-        score += 30
-        reasons.append("явный запрос услуги")
-
-    if urgent_hits:
-        score += 20
-        reasons.append("срочный запрос")
-
     if lead_type == "transfer":
-        score += 14
+        score += 6
         reasons.append("трансфер")
     elif lead_type == "excursion":
-        score += 12
-        reasons.append("экскурсия")
-    elif lead_type == "companions":
-        score += 14
-        reasons.append("попутчики/добор")
-
-    places = detect_all_places(text)
-    if detect_route(text):
-        score += 8
-    if detect_city(text):
         score += 6
-    if len(places) >= 2:
-        score += 12
-        reasons.append("понятен маршрут")
-    if detect_people(text):
-        score += 8
-    if detect_date_hint(text):
-        score += 8
-    if detect_time_hint(text):
-        score += 4
-    if "?" in text:
-        score += 3
+        reasons.append("экскурсия")
 
-    if len(text) > 900 and "?" not in text:
-        score -= 25
-    if len(text) < 10:
-        score -= 12
-
-    if score >= 80:
+    context_signals = strong_context_signals(text)
+    if context_signals:
+        # Один сильный контекст уже делает прямую заявку горячей.
+        score += 25 + min(15, (len(context_signals) - 1) * 5)
+        reasons.extend(context_signals)
         level = "🔥 ГОРЯЧИЙ"
-    elif score >= 55:
-        level = "🟡 ТЁПЛЫЙ"
-    elif score >= MIN_SCORE_TO_SEND:
-        level = "⚪ ПЕРСПЕКТИВНЫЙ"
+        temperature = "hot"
     else:
+        level = "🟡 ТЁПЛЫЙ"
+        temperature = "warm"
+
+    if "?" in text:
+        score += 2
+    if len(text) > 900 and "?" not in text:
+        score -= 15
+    if len(text) < 8:
+        score -= 10
+
+    # Защитный минимум: прямой запрос услуги остаётся тёплым, но совсем
+    # подозрительно короткие/слабые формулировки не отправляем.
+    if score < MIN_SCORE_TO_SEND:
         return None, "low_score"
 
     return {
@@ -1510,6 +1609,7 @@ def classify_lead_detailed(text, source_context=""):
         "lead_type": lead_type,
         "reasons": reasons,
         "bucket": "direct",
+        "temperature": temperature,
     }, None
 
 def classify_lead(text):
@@ -1521,37 +1621,44 @@ def classify_lead(text):
 # REPLY DRAFT
 # =========================================================
 
-def make_reply(text, lead_type):
+def make_reply(text, lead_type, classification=None):
     city = detect_city(text)
     route = detect_route(text)
     people = detect_people(text)
     date_hint = detect_date_hint(text)
+    urgency = detect_urgency(text)
+    places = detect_all_places(text)
+    temperature = (classification or {}).get("temperature")
+
     parts = ["Добрый день!"]
 
     if lead_type == "planning":
-        parts.append("Вижу, что вы планируете поездку в Абхазию.")
-        parts.append("Если понадобится трансфер или экскурсия, можно подобрать вариант под даты и состав группы.")
+        # Ненавязчивый полезный ответ: без продажи в лоб.
+        if route:
+            parts.append(f"Если будете планировать маршрут «{route}», могу подсказать оптимальный вариант по времени и выезду.")
+        else:
+            parts.append("Если будете планировать поездку по Абхазии, могу подсказать удобный маршрут под ваши даты.")
+        parts.append("Напишите, откуда будете выезжать и сколько вас человек — подскажу варианты.")
         return " ".join(parts)
 
     if lead_type == "transfer":
-        places = detect_all_places(text)
         if len(places) >= 2:
             parts.append(f"Могу помочь с трансфером по маршруту {places[0]} — {places[1]}.")
         else:
             parts.append("Могу помочь с трансфером.")
+
+        if date_hint or urgency:
+            when = date_hint or urgency
+            parts.append(f"На {when} можно проверить свободную машину.")
         if people:
-            parts.append(f"Для {people} человек можно подобрать подходящий автомобиль.")
-        if date_hint:
-            parts.append(f"На {date_hint} можно проверить свободную машину.")
-        parts.append("Напишите, пожалуйста, точку отправления, точку назначения, дату и время, количество пассажиров и багажа.")
+            parts.append(f"Для {people} человек подберём подходящий автомобиль.")
 
-    elif lead_type == "companions":
-        parts.append("Вижу, что вы ищете попутчиков или компанию для поездки.")
-        if route:
-            parts.append(f"По направлению «{route}» можно подобрать вариант.")
-        parts.append("Напишите дату поездки и сколько вас человек.")
+        if temperature == "hot":
+            parts.append("Напишите точное время, адрес/точку подачи и количество багажа — быстро проверю вариант.")
+        else:
+            parts.append("Напишите, пожалуйста, дату, маршрут, количество пассажиров и багажа — подберу вариант.")
 
-    else:
+    elif lead_type == "excursion":
         if route == "Святыни":
             parts.append("Могу организовать поездку по святыням Абхазии.")
             if "илор" in text.lower():
@@ -1560,11 +1667,21 @@ def make_reply(text, lead_type):
             parts.append(f"Могу организовать поездку по маршруту «{route}».")
         else:
             parts.append("Могу помочь подобрать экскурсию по Абхазии под ваши пожелания.")
+
         if city:
             parts.append(f"Можно подобрать удобный выезд из {city}.")
         if people:
             parts.append(f"Для компании из {people} человек подберём формат.")
-        parts.append("Напишите, пожалуйста, дату поездки, сколько будет взрослых и детей и что хочется увидеть.")
+        if date_hint or urgency:
+            parts.append(f"На {date_hint or urgency} можно проверить свободное время.")
+
+        if temperature == "hot":
+            parts.append("Напишите, пожалуйста, точную дату, сколько будет взрослых и детей и откуда нужен выезд — предложу конкретный вариант.")
+        else:
+            parts.append("Напишите дату поездки, сколько вас человек и что хочется увидеть — подберу маршрут.")
+
+    else:
+        return None
 
     return " ".join(parts)
 
@@ -2147,6 +2264,10 @@ def scan_external_web_sources(state, stats):
                 else:
                     direct.append(candidate)
                     bump_stat(stats, "accepted")
+                    if classification.get("temperature") == "hot":
+                        bump_stat(stats, "hot_leads")
+                    elif classification.get("temperature") == "warm":
+                        bump_stat(stats, "warm_leads")
                     bump_stat(stats, "external_accepted")
                     bump_external_source(stats, name, "accepted")
 
@@ -2182,6 +2303,7 @@ def new_filter_stats():
         "seller_or_ad": 0,
         "broadcast_content": 0,
         "advice_response": 0,
+        "route_discussion_only": 0,
         "cargo_request": 0,
         "informational_only": 0,
         "planning_candidate": 0,
@@ -2192,6 +2314,8 @@ def new_filter_stats():
         "source_context_used": 0,
         "low_score": 0,
         "accepted": 0,
+        "hot_leads": 0,
+        "warm_leads": 0,
         "external_pages_ok": 0,
         "external_mojeek_ok": 0,
         "external_baseline": 0,
@@ -2234,6 +2358,7 @@ def print_filter_stats(stats):
     print(f"Seller/advertising text:       {stats['seller_or_ad']}")
     print(f"Broadcast/information content: {stats['broadcast_content']}")
     print(f"Advice/reply to tourist:       {stats['advice_response']}")
+    print(f"Route discussion only:         {stats['route_discussion_only']}")
     print(f"Cargo/parcel request:          {stats['cargo_request']}")
     print(f"Informational only:            {stats['informational_only']}")
     print(f"Planning candidates:           {stats['planning_candidate']}")
@@ -2244,6 +2369,8 @@ def print_filter_stats(stats):
     print(f"Context inherited from source: {stats['source_context_used']}")
     print(f"Below score threshold:         {stats['low_score']}")
     print(f"Accepted candidates:           {stats['accepted']}")
+    print(f"Hot direct leads:              {stats['hot_leads']}")
+    print(f"Warm direct leads:             {stats['warm_leads']}")
     print("")
     print("SOURCE STATS")
     if not stats["sources"]:
@@ -2391,6 +2518,10 @@ async def message_to_candidate(
         bump_source(stats, source_name, "planning")
     else:
         bump_stat(stats, "accepted")
+        if classification.get("temperature") == "hot":
+            bump_stat(stats, "hot_leads")
+        elif classification.get("temperature") == "warm":
+            bump_stat(stats, "warm_leads")
         bump_source(stats, source_name, "accepted")
 
     return {
@@ -2615,7 +2746,7 @@ def make_planning_digest(planning):
         return None
 
     lines = [
-        "🟡 <b>ПЛАНИРУЮТ ПОЕЗДКУ — СВОДКА</b>",
+        "🟠 <b>ПЛАНИРУЮТ ПОЕЗДКУ — СВОДКА</b>",
         "",
         "Это не прямые заявки на трансфер/экскурсию, но люди уже планируют поездку.",
         "Можно использовать для аккуратного полезного ответа без навязчивой продажи.",
@@ -2741,7 +2872,9 @@ async def async_main():
         planning = planning[:12]
 
         print_filter_stats(stats)
-        print(f"Found {len(leads)} direct lead(s)")
+        hot_count = sum(1 for item in leads if item["classification"].get("temperature") == "hot")
+        warm_count = sum(1 for item in leads if item["classification"].get("temperature") == "warm")
+        print(f"Found {len(leads)} direct lead(s): hot={hot_count}, warm={warm_count}")
         print(f"Found {len(planning)} planning candidate(s)")
 
         sent = 0
@@ -2766,6 +2899,7 @@ async def async_main():
                 draft = make_reply(
                     lead["text"],
                     lead["classification"]["lead_type"],
+                    lead["classification"],
                 )
                 if draft:
                     try:
