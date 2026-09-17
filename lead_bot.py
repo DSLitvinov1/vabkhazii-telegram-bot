@@ -585,6 +585,25 @@ def has_abkhazia_context(text):
     return any(phrase in lower for phrase in ABKHAZIA_CONTEXT_PHRASES)
 
 
+def has_abkhazia_source_context(source_context):
+    """
+    Источник сам может давать географический контекст.
+    Например, в чате «Попутчики Абхазия» сообщение «кто едет в Сириус?»
+    не обязано повторять слово «Абхазия».
+    """
+    if not source_context:
+        return False
+
+    lower = normalize(str(source_context)).lower()
+    source_markers = [
+        "абхаз", "гагра", "пицунд", "сухум", "сухуми",
+        "новый афон", "гудаут", "очамчир", "очамчыр",
+        "ткуарчал", "гал", "цандрыпш", "гантиади",
+        "псоу", "рица", "мзы",
+    ]
+    return any(marker in lower for marker in source_markers)
+
+
 def has_buyer_intent(text):
     lower = text.lower()
 
@@ -1011,7 +1030,7 @@ def detect_lead_type(text):
     return best_type
 
 
-def classify_lead_detailed(text):
+def classify_lead_detailed(text, source_context=""):
     lower = text.lower()
 
     # Возвращаем не только результат, но и причину отсева.
@@ -1030,7 +1049,9 @@ def classify_lead_detailed(text):
     if looks_like_advice_response(text):
         return None, "advice_response"
 
-    if not has_abkhazia_context(text):
+    text_has_context = has_abkhazia_context(text)
+    source_has_context = has_abkhazia_source_context(source_context)
+    if not text_has_context and not source_has_context:
         return None, "no_abkhazia_context"
 
     # Планирование поездки сохраняем отдельно, но не отправляем как обычный лид.
@@ -1314,6 +1335,7 @@ def new_filter_stats():
         "unknown_service_type": 0,
         "no_buyer_intent": 0,
         "no_abkhazia_context": 0,
+        "source_context_used": 0,
         "low_score": 0,
         "accepted": 0,
         "sources": {},
@@ -1357,6 +1379,7 @@ def print_filter_stats(stats):
     print(f"Unknown service type:          {stats['unknown_service_type']}")
     print(f"No buyer intent (legacy):      {stats['no_buyer_intent']}")
     print(f"No Abkhazia context:           {stats['no_abkhazia_context']}")
+    print(f"Context inherited from source: {stats['source_context_used']}")
     print(f"Below score threshold:         {stats['low_score']}")
     print(f"Accepted candidates:           {stats['accepted']}")
     print("")
@@ -1463,11 +1486,15 @@ async def message_to_candidate(
         bump_stat(stats, "duplicate")
         return None
 
-    classification, reject_reason = classify_lead_detailed(text)
+    context_hint = f"{source_name} {source_title(chat)}"
+    classification, reject_reason = classify_lead_detailed(text, source_context=context_hint)
     if not classification:
         if reject_reason:
             bump_stat(stats, reject_reason)
         return None
+
+    if not has_abkhazia_context(text) and has_abkhazia_source_context(context_hint):
+        bump_stat(stats, "source_context_used")
 
     if classification.get("bucket") == "planning":
         bump_stat(stats, "planning_candidate")
