@@ -27,6 +27,12 @@ TG_SESSION = os.environ["TG_SESSION"]
 LEADS_BOT_TOKEN = os.environ["LEADS_BOT_TOKEN"]
 LEADS_CHAT_ID = os.environ["LEADS_CHAT_ID"]
 
+# Ручной тестовый режим из GitHub Actions.
+# В TEST_MODE бот НЕ ищет лиды и НЕ изменяет историю/антидубли.
+TEST_MODE = os.environ.get("TEST_MODE", "false").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+
 STATE_DIR = Path(".lead_state")
 STATE_FILE = STATE_DIR / "state.json"
 
@@ -1728,10 +1734,64 @@ def make_planning_digest(planning):
 
 
 # =========================================================
+# TEST MODE
+# =========================================================
+
+def send_test_pair():
+    """
+    Отправляет тестовую карточку + отдельный копируемый ответ.
+
+    Важно:
+    - не читает Telegram через пользовательскую сессию;
+    - не добавляет ничего в state.json;
+    - не влияет на антидубли;
+    - не является настоящим лидом.
+    """
+    test_card = (
+        "🧪 <b>ТЕСТОВАЯ КАРТОЧКА</b>\n"
+        "🚐 <b>ТРАНСФЕР</b>\n\n"
+        "⭐ Оценка: 88\n"
+        "📡 Источник: тестовый режим VAbkhazii Leads Bot\n"
+        "✅ Автор: тестовый пользователь\n"
+        "📍 Маршрут: Гагра → Сириус\n"
+        "⏰ Срочность: сегодня\n"
+        "🎯 Сигналы: прямой запрос услуги, трансфер\n\n"
+        "💬 <b>Сообщение:</b>\n"
+        "Кто сегодня сможет отвезти нас из Гагры в Сириус? Нас 3 человека, есть багаж.\n\n"
+        "ℹ️ Это искусственный тест. В историю лидов он не записывается."
+    )
+
+    draft = (
+        "Добрый день! Могу помочь с трансфером из Гагры в Сириус. "
+        "Напишите, пожалуйста, на какое время нужна машина, точку отправления "
+        "и сколько будет багажа."
+    )
+
+    card_message_id = send_private_message(test_card)
+    if not card_message_id:
+        raise RuntimeError("Test card was sent without message_id")
+
+    send_private_message(
+        draft,
+        reply_to_message_id=card_message_id,
+        parse_html=False,
+    )
+
+    print("TEST_MODE: test card sent")
+    print("TEST_MODE: separate copyable reply sent")
+    print("TEST_MODE: state/history unchanged")
+
+
+# =========================================================
 # MAIN
 # =========================================================
 
 async def async_main():
+    if TEST_MODE:
+        print("TEST_MODE enabled: skipping search and state changes")
+        send_test_pair()
+        return
+
     state = load_state()
     client = TelegramClient(StringSession(TG_SESSION), TG_API_ID, TG_API_HASH)
     await client.connect()
