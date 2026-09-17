@@ -46,6 +46,13 @@ MIN_SCORE_TO_SEND = 28
 QUERY_DELAY_SECONDS = 0.20
 CHAIN_WINDOW_HOURS = 6
 
+# Автоматический режим 24/7 через GitHub Actions.
+# Сам workflow запускается каждые 5 минут, а тяжёлые операции выполняются реже.
+GLOBAL_SEARCH_INTERVAL_MINUTES = 30
+DISCOVERED_SCAN_INTERVAL_MINUTES = 15
+DISCOVERY_REFRESH_INTERVAL_MINUTES = 360
+
+
 # Автопоиск новых публичных туристических групп Telegram.
 DISCOVERY_ENABLED = True
 DISCOVERY_LIMIT_PER_QUERY = 20
@@ -576,6 +583,42 @@ FUTURE_TRIP_PHRASES = [
     "в июне", "в июле", "в августе",
 ]
 
+# Сильные признаки, что человек говорит именно о СВОЕЙ будущей поездке,
+# а не обсуждает новости, рейсы, погоду или чужой опыт.
+PERSONAL_FUTURE_TRIP_PHRASES = [
+    "я собираюсь", "мы собираемся", "собираемся в абхазию", "собираюсь в абхазию",
+    "я планирую", "мы планируем", "планируем поездку", "планирую поездку",
+    "поеду в абхазию", "поедем в абхазию", "еду в абхазию", "едем в абхазию",
+    "лечу в сухум", "летим в сухум", "прилетаю в сухум", "прилетаем в сухум",
+    "приезжаю в абхазию", "приезжаем в абхазию",
+    "буду в абхазии", "будем в абхазии", "хочу приехать", "хотим приехать",
+    "хочу в абхазию", "хотим в абхазию", "еду отдыхать", "едем отдыхать",
+    "собираюсь отдыхать", "собираемся отдыхать", "планирую отдых", "планируем отдых",
+]
+
+# Явные рекламные предложения, которые часто выглядят как planning из-за слов
+# «завтра», маршрута и количества мест, но на самом деле это продавцы.
+SELLER_OFFER_PHRASES = [
+    "минивэн пустой", "минивен пустой", "микроавтобус пустой",
+    "есть свободные места", "свободные места", "осталось место", "осталось мест",
+    "места в машине", "есть места в машине", "есть места на поездку",
+    "набираю группу", "набираем группу", "добираю группу", "добираем группу",
+    "кто желает поехать", "кто желает завтра", "кто желает сегодня",
+    "предлагаю трансфер", "предлагаю экскурсию", "организую трансфер", "организую экскурсию",
+]
+
+REAL_ESTATE_AD_PHRASES = [
+    "участок в собственности", "участок мечты", "продается участок", "продаётся участок",
+    "продается дом", "продаётся дом", "продам участок", "продам дом",
+    "недвижимость в сухуме", "недвижимость в абхазии", "соток", "до моря —",
+]
+
+NEWS_DISCUSSION_PHRASES = [
+    "объявили сегодня", "объявили о начале", "начале полетов", "начале полётов",
+    "рейсов станет", "будет больше рейсов", "рейсы перенесли", "рейс перенесли",
+    "аэропорт принимает", "аэропорт отправляет", "ограничения на использование воздушного пространства",
+]
+
 PRICE_RESEARCH_PHRASES = [
     "кто-то заказывал", "кто то заказывал", "кто заказывал",
     "кто-нибудь заказывал", "кто нибудь заказывал",
@@ -718,6 +761,15 @@ def load_state():
     state.setdefault("external_seen", [])
     state.setdefault("external_initialized", {})
     state.setdefault("external_last_scan", None)
+
+    # Состояние непрерывного мониторинга. Благодаря курсорам бот при запуске
+    # каждые 5 минут читает только новые сообщения в известных чатах, а не
+    # повторно перебирает сотни старых сообщений.
+    state.setdefault("chat_cursors", {})
+    state.setdefault("global_last_scan", None)
+    state.setdefault("discovered_last_scan", None)
+    state.setdefault("discovery_refresh_last_scan", None)
+    state.setdefault("discovered_chat_usernames", [])
     return state
 
 
@@ -729,6 +781,60 @@ def save_state(state):
         json.dumps(state, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def _parse_state_time(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def state_interval_due(value, minutes):
+    last = _parse_state_time(value)
+    if last is None:
+        return True
+    return datetime.now(timezone.utc) - last >= timedelta(minutes=minutes)
+
+
+def mark_state_time(state, key):
+    state[key] = datetime.now(timezone.utc).isoformat()
+
+
+def chat_cursor_key(entity, source_kind):
+    entity_id = getattr(entity, "id", None)
+    if entity_id is not None:
+        return f"{source_kind}:{entity_id}"
+    username = (getattr(entity, "username", None) or "").lower()
+    if username:
+        return f"{source_kind}:@{username}"
+    title = normalize(getattr(entity, "title", "") or "unknown")
+    return f"{source_kind}:{title}"
+
+
+def get_chat_cursor(state, entity, source_kind):
+    raw = state.setdefault("chat_cursors", {}).get(chat_cursor_key(entity, source_kind))
+    try:
+        return max(0, int(raw or 0))
+    except Exception:
+        return 0
+
+
+def update_chat_cursor(state, entity, source_kind, message_id):
+    if not message_id:
+        return
+    key = chat_cursor_key(entity, source_kind)
+    cursors = state.setdefault("chat_cursors", {})
+    try:
+        current = int(cursors.get(key, 0) or 0)
+    except Exception:
+        current = 0
+    cursors[key] = max(current, int(message_id))
 
 
 # =========================================================
@@ -788,9 +894,29 @@ def contains_any(text, phrases):
 
 
 def looks_like_seller(text):
-    lower = text.lower()
+    lower = normalize(text).lower()
 
     if contains_any(lower, SELLER_PHRASES):
+        return True
+
+    # Недвижимость и объявления продавцов услуг не должны попадать даже в planning.
+    if any(phrase in lower for phrase in REAL_ESTATE_AD_PHRASES):
+        return True
+    if any(phrase in lower for phrase in SELLER_OFFER_PHRASES):
+        return True
+
+    # «Кто желает завтра ... 4 места» — типичное предложение места/поездки,
+    # а не запрос покупателя.
+    if re.search(r"\b\d{1,2}\s*мест(?:о|а)?\b", lower) and any(
+        phrase in lower
+        for phrase in ["кто желает", "выезжаю", "еду", "поеду", "минивэн", "минивен", "микроавтобус"]
+    ):
+        return True
+
+    # Водитель, который сам сообщает маршрут/время и что машина свободна.
+    if any(vehicle in lower for vehicle in ["минивэн", "минивен", "микроавтобус"]) and any(
+        phrase in lower for phrase in ["выезжаю", "еду пустой", "пустой", "свободен", "есть места"]
+    ):
         return True
 
     commercial_markers = [
@@ -857,9 +983,59 @@ def has_future_trip_signal(text):
     lower = normalize(text).lower()
     if any(phrase in lower for phrase in FUTURE_TRIP_PHRASES):
         return True
-    # Конкретная ближайшая дата тоже означает будущую/текущую поездку.
+    # Конкретная ближайшая дата тоже может означать будущую/текущую поездку,
+    # но сама по себе дата больше НЕ делает сообщение planning-лидом.
     date_hint = detect_date_hint(text)
     return bool(date_hint)
+
+
+def has_personal_future_trip_intent(text):
+    """Человек говорит о своей будущей поездке/выезде, а не о новостях и чужих планах."""
+    lower = normalize(text).lower()
+
+    if any(phrase in lower for phrase in PERSONAL_FUTURE_TRIP_PHRASES):
+        return True
+
+    # Естественные фразы: «мы в октябре едем», «я завтра прилетаю»,
+    # «нам на следующей неделе ехать», «мне бы в начале октября хотелось». 
+    if re.search(
+        r"\b(?:я|мы|мне|нам)\b.{0,110}\b(?:поед|едем|еду|лет|прилет|приезж|собира|планир|хоч|буду|будем|отдых)",
+        lower,
+    ):
+        return True
+
+    if re.search(r"\bмне\s+бы\b.{0,120}\b(?:хоч|надо|нуж)", lower):
+        return True
+
+    # Поиск попутчиков/компании — тоже личный план поездки.
+    if any(
+        phrase in lower
+        for phrase in [
+            "ищу попутчика", "ищем попутчиков", "ищу попутчиков", "ищем попутчика",
+            "ищу компанию", "ищем компанию", "кто с нами", "кто поедет с нами",
+        ]
+    ):
+        return True
+
+    return False
+
+
+def looks_like_news_or_general_discussion(text):
+    """Новости/обсуждение рейсов и общей ситуации без собственного намерения ехать."""
+    lower = normalize(text).lower()
+    if has_explicit_service_request(text) or has_personal_future_trip_intent(text):
+        return False
+
+    if any(phrase in lower for phrase in NEWS_DISCUSSION_PHRASES):
+        return True
+
+    # Текст про рейсы/аэропорт, где нет «я/мы едем/летим/планируем», обычно обсуждение.
+    transport_news_hits = sum(
+        1
+        for marker in ["рейс", "рейсов", "полет", "полёт", "аэропорт", "перенесли", "закрыта", "закрыт"]
+        if marker in lower
+    )
+    return transport_news_hits >= 2 and not has_personal_future_trip_intent(text)
 
 
 def looks_like_past_trip(text):
@@ -869,23 +1045,30 @@ def looks_like_past_trip(text):
     if has_execution_request(text):
         return False
 
-    # Сильная будущая формулировка может сосуществовать с рассказом о прошлом:
-    # «были в прошлом году, в октябре едем снова». В этом случае не режем.
-    explicit_future = any(phrase in lower for phrase in FUTURE_TRIP_PHRASES)
+    # Только реальный личный будущий план может отменить фильтр прошлого.
+    explicit_future = has_personal_future_trip_intent(text)
 
     strong_past = any(phrase in lower for phrase in PAST_TRIP_PHRASES)
     past_verb = re.search(
-        r"\b(?:я|мы)\s+(?:был|была|были|ездил|ездила|ездили)\b",
+        r"\b(?:я|мы)\s+(?:был|была|были|ездил|ездила|ездили|прилетел|прилетела|прилетели|приехал|приехала|приехали|уехал|уехала|уехали|вернулся|вернулась|вернулись|отдыхал|отдыхала|отдыхали|жил|жила|жили|купил|купила|купили)\b",
         lower,
     )
     past_time = re.search(
         r"\b(?:\d+|один|два|три|четыре|пять)\s+(?:год|года|лет|месяц|месяца|месяцев)\s+назад\b",
         lower,
     )
+    past_trip_story = any(
+        phrase in lower
+        for phrase in [
+            "должны были прилететь", "должны были приехать", "должны были поехать",
+            "прилетели", "приехали", "вернулись", "отдыхали", "останавливались",
+            "сегодня купили", "вчера купили", "были там", "ездили туда",
+        ]
+    )
 
     if explicit_future and not past_time:
         return False
-    return bool(strong_past or (past_verb and (past_time or "раньше" in lower or "прошл" in lower)))
+    return bool(strong_past or past_verb or past_time or past_trip_story)
 
 
 def is_price_research_request(text):
@@ -1524,20 +1707,52 @@ def is_planning_request(text):
 
     if has_explicit_service_request(text):
         return False
+    if looks_like_seller(text) or looks_like_broadcast_content(text):
+        return False
     if looks_like_past_trip(text) or looks_like_advice_response(text):
         return False
-
-    # Planning теперь означает именно будущую/предстоящую поездку.
-    if not has_future_trip_signal(text):
+    if looks_like_news_or_general_discussion(text):
         return False
 
-    if any(phrase in lower for phrase in PLANNING_PHRASES):
+    # Главная защита от мусора: месяц, «завтра», город или название Абхазии
+    # сами по себе больше не делают сообщение planning-кандидатом.
+    personal_future = has_personal_future_trip_intent(text)
+
+    strong_planning_phrase = any(
+        phrase in lower
+        for phrase in [
+            "куда поехать", "куда съездить", "куда сходить", "что посмотреть", "что посетить",
+            "куда лучше поехать", "где лучше остановиться",
+            "ищу попутчика", "ищем попутчиков", "ищу попутчиков", "ищем попутчика",
+            "ищу компанию", "ищем компанию", "кто с нами", "кто поедет с нами",
+            "хочу на рицу", "хотим на рицу", "хочу на мзы", "хотим на мзы",
+            "хочу в новый афон", "хотим в новый афон",
+        ]
+    )
+
+    # Вопросы «как добраться/доехать» полезны только когда это собственный запрос,
+    # а не ответ/обсуждение дороги.
+    route_question = any(
+        phrase in lower
+        for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться"]
+    ) and ("?" in text or "подскаж" in lower or "пожалуйста" in lower)
+
+    explicit_trip_phrase = any(phrase in lower for phrase in PLANNING_PHRASES)
+
+    if personal_future:
         return True
 
-    if any(phrase in lower for phrase in PLANNING_INTENT_PHRASES):
+    if strong_planning_phrase and (
+        "?" in text or "подскаж" in lower or "посовет" in lower or "ищ" in lower or "хочу" in lower or "хотим" in lower
+    ):
         return True
 
-    if has_abkhazia_context(text) or detect_city(text) or detect_route(text):
+    if route_question and has_future_trip_signal(text):
+        return True
+
+    # PLANNING_PHRASES вроде «планируем поездку» уже содержат личное намерение,
+    # но оставляем отдельную страховку на случай новых формулировок.
+    if explicit_trip_phrase and has_future_trip_signal(text):
         return True
 
     return False
@@ -1702,6 +1917,8 @@ def classify_lead_detailed(text, source_context=""):
 
         if looks_informational_only(text):
             return None, "informational_only"
+        if has_future_trip_signal(text) or any(phrase in lower for phrase in PLANNING_INTENT_PHRASES):
+            return None, "planning_noise_filtered"
         return None, "no_direct_service_intent"
 
     lead_type = detect_lead_type(text)
@@ -2507,6 +2724,7 @@ def new_filter_stats():
         "cargo_request": 0,
         "informational_only": 0,
         "planning_candidate": 0,
+        "planning_noise_filtered": 0,
         "no_direct_service_intent": 0,
         "unknown_service_type": 0,
         "no_buyer_intent": 0,
@@ -2568,6 +2786,7 @@ def print_filter_stats(stats):
     print(f"Merged author chains:          {stats['merged_chains']}")
     print(f"Messages in merged chains:     {stats['merged_messages']}")
     print(f"Planning candidates:           {stats['planning_candidate']}")
+    print(f"Planning noise filtered:       {stats['planning_noise_filtered']}")
     print(f"No direct service intent:      {stats['no_direct_service_intent']}")
     print(f"Unknown service type:          {stats['unknown_service_type']}")
     print(f"No buyer intent (legacy):      {stats['no_buyer_intent']}")
@@ -2877,32 +3096,48 @@ def aggregate_telegram_candidates(items, stats):
 async def global_search_worker(client, state, cutoff, self_user_id, stats):
     candidates = {}
 
-    for query in SEARCH_QUERIES:
-        print(f"[GLOBAL] {query}")
-        try:
-            async for message in client.iter_messages(None, search=query, limit=SEARCH_LIMIT):
-                item = await message_to_candidate(
-                    client,
-                    message,
-                    cutoff,
-                    state,
-                    "global",
-                    "GLOBAL",
-                    self_user_id,
-                    stats,
-                )
-                merge_candidate(candidates, item)
+    if not state_interval_due(
+        state.get("global_last_scan"),
+        GLOBAL_SEARCH_INTERVAL_MINUTES,
+    ):
+        print(
+            f"[GLOBAL] skipped: full Telegram search runs every "
+            f"{GLOBAL_SEARCH_INTERVAL_MINUTES} minutes"
+        )
+        return candidates
 
-        except FloodWaitError as exc:
-            print(f"[FLOOD WAIT] {exc.seconds}s on query: {query}")
-            if exc.seconds <= 60:
-                await asyncio.sleep(exc.seconds + 1)
-            else:
-                break
-        except Exception as exc:
-            print(f"[GLOBAL WARNING] {query}: {exc}")
+    try:
+        for query in SEARCH_QUERIES:
+            print(f"[GLOBAL] {query}")
+            try:
+                async for message in client.iter_messages(None, search=query, limit=SEARCH_LIMIT):
+                    item = await message_to_candidate(
+                        client,
+                        message,
+                        cutoff,
+                        state,
+                        "global",
+                        "GLOBAL",
+                        self_user_id,
+                        stats,
+                    )
+                    merge_candidate(candidates, item)
 
-        await asyncio.sleep(QUERY_DELAY_SECONDS)
+            except FloodWaitError as exc:
+                print(f"[FLOOD WAIT] {exc.seconds}s on query: {query}")
+                if exc.seconds <= 60:
+                    await asyncio.sleep(exc.seconds + 1)
+                else:
+                    break
+            except Exception as exc:
+                print(f"[GLOBAL WARNING] {query}: {exc}")
+
+            await asyncio.sleep(QUERY_DELAY_SECONDS)
+    finally:
+        # Даже если отдельный запрос дал ошибку, не долбим Telegram полным
+        # поиском каждые 5 минут. Обычные целевые/вступленные чаты всё равно
+        # продолжают проверяться на каждом запуске.
+        mark_state_time(state, "global_last_scan")
 
     return candidates
 
@@ -2915,9 +3150,18 @@ async def chat_scan_worker(client, state, cutoff, self_user_id, stats):
         print(f"[CHAT] {source_name}")
         try:
             entity = await client.get_entity(chat_ref)
+            cursor = get_chat_cursor(state, entity, "whitelist")
+            newest_id = cursor
+            kwargs = {"limit": CHAT_SCAN_LIMIT}
+            if cursor > 0:
+                kwargs["min_id"] = cursor
 
-            async for message in client.iter_messages(entity, limit=CHAT_SCAN_LIMIT):
-                if message.date:
+            async for message in client.iter_messages(entity, **kwargs):
+                newest_id = max(newest_id, int(getattr(message, "id", 0) or 0))
+
+                # На первом проходе сохраняем прежнюю глубину 72 часа. После
+                # появления курсора читаются только сообщения новее cursor.
+                if cursor == 0 and message.date:
                     date = message.date
                     if date.tzinfo is None:
                         date = date.replace(tzinfo=timezone.utc)
@@ -2936,6 +3180,9 @@ async def chat_scan_worker(client, state, cutoff, self_user_id, stats):
                 )
                 merge_candidate(candidates, item)
 
+            if newest_id > cursor:
+                update_chat_cursor(state, entity, "whitelist", newest_id)
+
         except FloodWaitError as exc:
             print(f"[CHAT FLOOD WAIT] {source_name}: {exc.seconds}s")
             if exc.seconds <= 60:
@@ -2946,9 +3193,54 @@ async def chat_scan_worker(client, state, cutoff, self_user_id, stats):
     return candidates
 
 
+async def get_discovered_chats_for_scan(client, state):
+    if not state_interval_due(
+        state.get("discovered_last_scan"),
+        DISCOVERED_SCAN_INTERVAL_MINUTES,
+    ):
+        print(
+            f"[DISCOVERED CHAT] skipped: scan runs every "
+            f"{DISCOVERED_SCAN_INTERVAL_MINUTES} minutes"
+        )
+        return []
+
+    mark_state_time(state, "discovered_last_scan")
+
+    refresh_due = state_interval_due(
+        state.get("discovery_refresh_last_scan"),
+        DISCOVERY_REFRESH_INTERVAL_MINUTES,
+    )
+    cached = [
+        str(x).strip().lstrip("@")
+        for x in state.get("discovered_chat_usernames", [])
+        if str(x).strip()
+    ]
+
+    if refresh_due or not cached:
+        chats = await discover_public_tourist_chats(client)
+        usernames = []
+        for chat in chats:
+            username = getattr(chat, "username", None)
+            if username:
+                usernames.append(str(username).lstrip("@"))
+        state["discovered_chat_usernames"] = list(dict.fromkeys(usernames))[:MAX_DISCOVERED_CHATS]
+        mark_state_time(state, "discovery_refresh_last_scan")
+        return chats
+
+    chats = []
+    for username in cached[:MAX_DISCOVERED_CHATS]:
+        try:
+            entity = await client.get_entity(username)
+            if is_discovery_candidate_chat(entity):
+                chats.append(entity)
+        except Exception as exc:
+            print(f"[DISCOVERED CACHE WARNING] @{username}: {exc}")
+    return chats
+
+
 async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats):
     candidates = {}
-    chats = await discover_public_tourist_chats(client)
+    chats = await get_discovered_chats_for_scan(client, state)
 
     for entity in chats:
         username = getattr(entity, "username", None) or "unknown"
@@ -2956,11 +3248,16 @@ async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats
         print(f"[DISCOVERED CHAT] {source_name}")
 
         try:
-            async for message in client.iter_messages(
-                entity,
-                limit=DISCOVERY_CHAT_SCAN_LIMIT,
-            ):
-                if message.date:
+            cursor = get_chat_cursor(state, entity, "discovered")
+            newest_id = cursor
+            kwargs = {"limit": DISCOVERY_CHAT_SCAN_LIMIT}
+            if cursor > 0:
+                kwargs["min_id"] = cursor
+
+            async for message in client.iter_messages(entity, **kwargs):
+                newest_id = max(newest_id, int(getattr(message, "id", 0) or 0))
+
+                if cursor == 0 and message.date:
                     date = message.date
                     if date.tzinfo is None:
                         date = date.replace(tzinfo=timezone.utc)
@@ -2979,6 +3276,9 @@ async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats
                 )
                 merge_candidate(candidates, item)
 
+            if newest_id > cursor:
+                update_chat_cursor(state, entity, "discovered", newest_id)
+
         except FloodWaitError as exc:
             print(f"[DISCOVERED CHAT FLOOD WAIT] {source_name}: {exc.seconds}s")
             if exc.seconds <= 60:
@@ -2993,6 +3293,7 @@ async def joined_chat_scan_worker(client, state, cutoff, self_user_id, stats):
     """
     Сканирует только тематические группы, в которые аккаунт уже вступил сам.
     Личные переписки и обычные нетуристические группы не затрагиваются.
+    На повторных автоматических запусках читает только новые сообщения.
     """
     candidates = {}
     chats = await list_joined_tourist_chats(client)
@@ -3007,8 +3308,16 @@ async def joined_chat_scan_worker(client, state, cutoff, self_user_id, stats):
         print(f"[MY CHAT] {source_name}")
 
         try:
-            async for message in client.iter_messages(entity, limit=MY_CHATS_SCAN_LIMIT):
-                if message.date:
+            cursor = get_chat_cursor(state, entity, "joined")
+            newest_id = cursor
+            kwargs = {"limit": MY_CHATS_SCAN_LIMIT}
+            if cursor > 0:
+                kwargs["min_id"] = cursor
+
+            async for message in client.iter_messages(entity, **kwargs):
+                newest_id = max(newest_id, int(getattr(message, "id", 0) or 0))
+
+                if cursor == 0 and message.date:
                     date = message.date
                     if date.tzinfo is None:
                         date = date.replace(tzinfo=timezone.utc)
@@ -3026,6 +3335,9 @@ async def joined_chat_scan_worker(client, state, cutoff, self_user_id, stats):
                     stats,
                 )
                 merge_candidate(candidates, item)
+
+            if newest_id > cursor:
+                update_chat_cursor(state, entity, "joined", newest_id)
 
         except FloodWaitError as exc:
             print(f"[MY CHAT FLOOD WAIT] {source_name}: {exc.seconds}s")
