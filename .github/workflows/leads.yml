@@ -2,6 +2,12 @@ name: VAbkhazii Leads Bot
 
 on:
   workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Send test card + separate copyable reply"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   leads:
@@ -46,5 +52,6 @@ jobs:
           TG_SESSION: ${{ secrets.TG_SESSION }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
+          TEST_MODE: ${{ inputs.test_mode }}
         run: |
           python lead_bot.py
