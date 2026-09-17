@@ -12,6 +12,7 @@ from pathlib import Path
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
+from telethon.tl.functions.contacts import SearchRequest
 from telethon.tl.types import User
 
 
@@ -29,12 +30,19 @@ LEADS_CHAT_ID = os.environ["LEADS_CHAT_ID"]
 STATE_DIR = Path(".lead_state")
 STATE_FILE = STATE_DIR / "state.json"
 
-MAX_AGE_HOURS = 48
+MAX_AGE_HOURS = 72
 SEARCH_LIMIT = 35
-CHAT_SCAN_LIMIT = 250
+CHAT_SCAN_LIMIT = 300
 MAX_LEADS_PER_RUN = 20
 MIN_SCORE_TO_SEND = 28
 QUERY_DELAY_SECONDS = 0.20
+
+# Автопоиск новых публичных туристических групп Telegram.
+DISCOVERY_ENABLED = True
+DISCOVERY_LIMIT_PER_QUERY = 20
+MAX_DISCOVERED_CHATS = 30
+DISCOVERY_CHAT_SCAN_LIMIT = 180
+DISCOVERY_QUERY_DELAY_SECONDS = 0.35
 
 # Белый список именно туристических обсуждений, не рекламных каналов гидов.
 # Недоступный/переименованный чат просто будет пропущен с warning в Actions.
@@ -44,6 +52,28 @@ TARGET_CHATS = [
     "abhazia_travel_chat",    # Абхазия · Наша Планета · чат путешествия
     "abkhazia4at",            # Абхазия · попутчики
     "abhaziya_chat",          # Абхазия чат / форум
+]
+
+# По этим фразам Telegram API ищет новые публичные группы.
+# Мы не вступаем в них автоматически: только читаем доступные публичные обсуждения.
+DISCOVERY_QUERIES = [
+    "Абхазия чат",
+    "Абхазия туристы",
+    "Абхазия путешествия",
+    "Абхазия отдых чат",
+    "Гагра чат",
+    "Пицунда чат",
+    "Сухум чат",
+    "Новый Афон чат",
+    "Абхазия попутчики",
+    "отдых в Абхазии",
+]
+
+# Такие группы не добавляем в автопоиск: это обычно витрины продавцов.
+COMMERCIAL_CHAT_MARKERS = [
+    "трансфер", "экскурсии", "экскурсия", "гид", "такси",
+    "аренда авто", "аренда машин", "бронирование", "туроператор",
+    "турагентство", "туры по абхазии", "автопарк",
 ]
 
 # Наши источники и технические аккаунты никогда не считаем лидами.
@@ -558,6 +588,88 @@ def is_allowed_sender(sender, self_user_id):
         return False
 
     return True
+
+
+def is_discovery_candidate_chat(chat):
+    """Публичная некоммерческая группа, найденная через Telegram Search."""
+    if not is_allowed_chat(chat):
+        return False
+
+    username = (getattr(chat, "username", None) or "").lower()
+    title = (getattr(chat, "title", None) or "").lower()
+    combined = f"{title} {username}"
+
+    if username in {name.lower() for name in TARGET_CHATS}:
+        return False
+
+    if any(marker in combined for marker in COMMERCIAL_CHAT_MARKERS):
+        return False
+
+    # Группа должна быть тематически связана с Абхазией или её городами.
+    context_markers = [
+        "абхаз", "гагр", "пицунд", "сухум", "афон", "гудаут",
+        "цандрыпш", "псоу", "рица",
+    ]
+    return any(marker in combined for marker in context_markers)
+
+
+async def discover_public_tourist_chats(client):
+    """Ищет публичные туристические группы Telegram без автоматического вступления."""
+    if not DISCOVERY_ENABLED:
+        return []
+
+    discovered = {}
+
+    for query in DISCOVERY_QUERIES:
+        print(f"[DISCOVER] {query}")
+        try:
+            result = await client(
+                SearchRequest(
+                    q=query,
+                    limit=DISCOVERY_LIMIT_PER_QUERY,
+                )
+            )
+
+            for chat in getattr(result, "chats", []) or []:
+                if not is_discovery_candidate_chat(chat):
+                    continue
+
+                username = (getattr(chat, "username", None) or "").lower()
+                if not username:
+                    continue
+
+                discovered[username] = chat
+                if len(discovered) >= MAX_DISCOVERED_CHATS:
+                    break
+
+        except FloodWaitError as exc:
+            print(f"[DISCOVER FLOOD WAIT] {query}: {exc.seconds}s")
+            if exc.seconds <= 60:
+                await asyncio.sleep(exc.seconds + 1)
+            else:
+                break
+        except Exception as exc:
+            print(f"[DISCOVER WARNING] {query}: {exc}")
+
+        if len(discovered) >= MAX_DISCOVERED_CHATS:
+            break
+
+        await asyncio.sleep(DISCOVERY_QUERY_DELAY_SECONDS)
+
+    chats = list(discovered.values())
+    if chats:
+        print("[DISCOVERED GROUPS]")
+        for chat in chats:
+            print(
+                "  @"
+                + str(getattr(chat, "username", ""))
+                + " | "
+                + str(getattr(chat, "title", ""))
+            )
+    else:
+        print("[DISCOVERED GROUPS] none")
+
+    return chats
 
 
 # =========================================================
@@ -1253,18 +1365,64 @@ async def chat_scan_worker(client, state, cutoff, self_user_id, stats):
     return candidates
 
 
+async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats):
+    candidates = {}
+    chats = await discover_public_tourist_chats(client)
+
+    for entity in chats:
+        username = getattr(entity, "username", None) or "unknown"
+        source_name = f"@{username}"
+        print(f"[DISCOVERED CHAT] {source_name}")
+
+        try:
+            async for message in client.iter_messages(
+                entity,
+                limit=DISCOVERY_CHAT_SCAN_LIMIT,
+            ):
+                if message.date:
+                    date = message.date
+                    if date.tzinfo is None:
+                        date = date.replace(tzinfo=timezone.utc)
+                    if date < cutoff:
+                        break
+
+                item = await message_to_candidate(
+                    message,
+                    cutoff,
+                    state,
+                    "discovered",
+                    source_name,
+                    self_user_id,
+                    stats,
+                )
+                merge_candidate(candidates, item)
+
+        except FloodWaitError as exc:
+            print(f"[DISCOVERED CHAT FLOOD WAIT] {source_name}: {exc.seconds}s")
+            if exc.seconds <= 60:
+                await asyncio.sleep(exc.seconds + 1)
+        except Exception as exc:
+            print(f"[DISCOVERED CHAT WARNING] {source_name}: {exc}")
+
+    return candidates
+
+
 async def search_public_messages(client, state, self_user_id):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
     stats = new_filter_stats()
 
-    # Независимые воркеры: глобальный поиск + целевые туристические чаты.
-    global_results, chat_results = await asyncio.gather(
+    # Три независимых потока поиска:
+    # 1) глобальный Telegram-поиск;
+    # 2) наш белый список;
+    # 3) автоматическое обнаружение новых публичных туристических групп.
+    global_results, chat_results, discovered_results = await asyncio.gather(
         global_search_worker(client, state, cutoff, self_user_id, stats),
         chat_scan_worker(client, state, cutoff, self_user_id, stats),
+        discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats),
     )
 
     candidates = {}
-    for source in (global_results, chat_results):
+    for source in (global_results, chat_results, discovered_results):
         for item in source.values():
             merge_candidate(candidates, item)
 
