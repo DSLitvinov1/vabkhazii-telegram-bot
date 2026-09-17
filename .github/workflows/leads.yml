@@ -1,6 +1,12 @@
 name: VAbkhazii Leads Bot
 
 on:
+  # Автоматический облачный запуск каждые 5 минут.
+  # Компьютер пользователя для этого не нужен.
+  schedule:
+    - cron: "*/5 * * * *"
+
+  # Ручной запуск оставляем для проверки и тестовой карточки.
   workflow_dispatch:
     inputs:
       test_mode:
@@ -9,12 +15,16 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 jobs:
   leads:
     runs-on: ubuntu-latest
-
     timeout-minutes: 15
 
+    # Не даём двум поискам работать одновременно. Если предыдущий запуск
+    # задержался, следующий дождётся его завершения вместо двойного сканирования.
     concurrency:
       group: vabkhazii-leads
       cancel-in-progress: false
@@ -23,6 +33,8 @@ jobs:
       - name: Download repository
         uses: actions/checkout@v4
 
+      # Восстанавливаем историю лидов, курсоры чатов и время тяжёлых поисков.
+      # Каждый новый запуск получает состояние от предыдущего запуска.
       - name: Restore leads history
         uses: actions/cache@v4
         with:
@@ -52,6 +64,6 @@ jobs:
           TG_SESSION: ${{ secrets.TG_SESSION }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
-          TEST_MODE: ${{ inputs.test_mode }}
+          TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode || false }}
         run: |
           python lead_bot.py
