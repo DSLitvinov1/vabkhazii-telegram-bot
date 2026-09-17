@@ -7,6 +7,7 @@ import re
 import sys
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -55,6 +56,13 @@ DISCOVERY_QUERY_DELAY_SECONDS = 0.35
 # Бот по-прежнему ищет только публичные Telegram-группы и НЕ вступает в них.
 CIS_ENABLED = True
 
+# МОИ ЧАТЫ: автоматически просматриваем тематические группы, в которые
+# уже вступил пользовательский Telegram-аккаунт. Бот НЕ вступает никуда сам,
+# не читает личные переписки и не сканирует обычные нетуристические группы.
+MY_CHATS_ENABLED = True
+MY_CHATS_MAX_GROUPS = 80
+MY_CHATS_SCAN_LIMIT = 220
+
 # Публичные внешние площадки/форумы. Проверяются реже Telegram,
 # чтобы не создавать лишнюю нагрузку на сайты. Используются только
 # открытые страницы без авторизации и без обхода ограничений доступа.
@@ -67,38 +75,64 @@ EXTERNAL_HTTP_TIMEOUT_SECONDS = 20
 EXTERNAL_BOOTSTRAP_SEND = False
 
 EXTERNAL_SOURCES = [
+    # TravelAsk, Tripadvisor и Babyblog блокируют прямые запросы из GitHub Actions.
+    # Для них используем бесплатную публичную HTML-выдачу Mojeek: бот получает
+    # только уже проиндексированные страницы и не обходит защиту самих площадок.
     {
         "key": "travelask_abkhazia",
         "name": "TravelAsk — Абхазия",
-        "url": "https://travelask.ru/questions/location/abkhazia",
         "kind": "travelask",
+        "access": "search_index",
+        "domain": "travelask.ru",
+        "path_contains": "/questions/",
+        "search_queries": [
+            'site:travelask.ru inurl:questions Абхазия экскурсия since:month',
+            'site:travelask.ru inurl:questions Абхазия трансфер since:month',
+            'site:travelask.ru inurl:questions Абхазия как добраться since:month',
+            'site:travelask.ru inurl:questions Гагра Пицунда Сухум Новый Афон Рица since:month',
+        ],
     },
     {
         "key": "abhazia_forum",
         "name": "Абхазия — форум туриста",
         "url": "https://www.abhazia.com/phpBB2/",
         "kind": "abhazia_forum",
+        "access": "direct",
     },
     {
         "key": "awd_abkhazia",
         "name": "Форум Винского — Абхазия",
         "url": "https://forum.awd.ru/viewforum.php?f=1625",
         "kind": "awd_forum",
+        "access": "direct",
     },
     {
         "key": "tripadvisor_abkhazia",
         "name": "Tripadvisor — форум Абхазии",
-        "url": "https://www.tripadvisor.ru/ShowForum-g3575865-i30788-Abkhazia.html",
         "kind": "tripadvisor",
+        "access": "search_index",
+        "domain": "tripadvisor.ru",
+        "path_contains": "/ShowTopic-",
+        "search_queries": [
+            'site:tripadvisor.ru inurl:ShowTopic Абхазия экскурсия since:month',
+            'site:tripadvisor.ru inurl:ShowTopic Абхазия трансфер since:month',
+            'site:tripadvisor.ru inurl:ShowTopic Гагра Пицунда Сухум Новый Афон Рица since:month',
+        ],
     },
     {
         "key": "babyblog_travel",
         "name": "Babyblog — путешествия",
-        "url": "https://www.babyblog.ru/community/travel",
         "kind": "babyblog",
+        "access": "search_index",
+        "domain": "babyblog.ru",
+        "path_contains": "/community/travel/post/",
+        "search_queries": [
+            'site:babyblog.ru inurl:community/travel/post Абхазия since:month',
+            'site:babyblog.ru inurl:community/travel/post Гагра Пицунда Сухум Новый Афон since:month',
+            'site:babyblog.ru inurl:community/travel/post Абхазия с детьми since:month',
+        ],
     },
 ]
-
 # Белый список именно туристических обсуждений, не рекламных каналов гидов.
 # Недоступный/переименованный чат просто будет пропущен с warning в Actions.
 TARGET_CHATS = [
@@ -112,6 +146,8 @@ TARGET_CHATS = [
 # По этим фразам Telegram API ищет новые публичные группы.
 # Мы не вступаем в них автоматически: только читаем доступные публичные обсуждения.
 DISCOVERY_QUERIES = [
+    "TravelAsk Абхазия",
+    "TravelAsk путешествия",
     # Абхазия и города
     "Абхазия чат",
     "Абхазия туристы",
@@ -868,6 +904,112 @@ def is_discovery_candidate_chat(chat):
             return True
 
     return False
+
+
+def is_joined_tourist_chat(chat):
+    """
+    Разрешает только тематические групповые чаты, в которые пользователь
+    уже вступил сам. Личные диалоги и broadcast-каналы исключаются.
+
+    В отличие от публичного discovery, joined-группа может не иметь username.
+    Это позволяет читать закрытые/приватные группы, к которым аккаунт уже
+    имеет законный доступ через собственное членство.
+    """
+    if not chat or isinstance(chat, User):
+        return False
+
+    # Каналы-вещатели не являются источником пользовательских лидов.
+    if getattr(chat, "broadcast", False):
+        return False
+
+    title = (getattr(chat, "title", None) or "").strip()
+    if not title:
+        return False
+
+    username = (getattr(chat, "username", None) or "").lower()
+    if username in BLOCKED_USERNAMES:
+        return False
+
+    combined = f"{title} {username}".lower()
+
+    # Коммерческие витрины гидов/такси/турфирм не сканируем как клиентские чаты.
+    if any(marker in combined for marker in COMMERCIAL_CHAT_MARKERS):
+        return False
+
+    abkhazia_markers = [
+        "абхаз", "гагр", "пицунд", "сухум", "афон", "гудаут",
+        "цандрыпш", "псоу", "рица", "мзы", "очамч", "ткуарч",
+    ]
+    if any(marker in combined for marker in abkhazia_markers):
+        return True
+
+    # Региональные чаты Сочи/Краснодарского края полезны для трансферов.
+    regional_markers = [
+        "сочи", "адлер", "сириус", "красная поляна", "роза хутор",
+        "эсто-садок", "лазаревск", "лоо", "дагомыс", "туапсе",
+        "геленджик", "новороссийск", "анапа", "краснодар",
+    ]
+    discussion_markers = [
+        "чат", "форум", "попут", "турист", "travel", "путеш",
+        "отдых", "поездк", "дорог", "trip",
+    ]
+    if (
+        any(marker in combined for marker in regional_markers)
+        and any(marker in combined for marker in discussion_markers)
+    ):
+        return True
+
+    # TravelAsk и прочие туристические сообщества СНГ. Для таких групп сам
+    # текст сообщения всё равно должен содержать контекст Абхазии, если
+    # название источника не содержит его напрямую.
+    if "travelask" in combined:
+        return True
+
+    if CIS_ENABLED:
+        has_cis = any(marker in combined for marker in CIS_SOURCE_MARKERS)
+        has_travel = any(marker in combined for marker in CIS_TRAVEL_CHAT_MARKERS)
+        if has_cis and has_travel:
+            return True
+
+    return False
+
+
+async def list_joined_tourist_chats(client):
+    """Возвращает подходящие групповые диалоги из аккаунта пользователя."""
+    if not MY_CHATS_ENABLED:
+        return []
+
+    selected = []
+    seen_ids = set()
+
+    try:
+        async for dialog in client.iter_dialogs():
+            entity = getattr(dialog, "entity", None)
+            if not is_joined_tourist_chat(entity):
+                continue
+
+            entity_id = getattr(entity, "id", None)
+            if entity_id in seen_ids:
+                continue
+            seen_ids.add(entity_id)
+            selected.append(entity)
+
+            if len(selected) >= MY_CHATS_MAX_GROUPS:
+                break
+    except Exception as exc:
+        print(f"[MY CHATS WARNING] dialog scan: {exc}")
+
+    if selected:
+        print("[MY CHATS SELECTED]")
+        for chat in selected:
+            username = getattr(chat, "username", None)
+            title = getattr(chat, "title", None) or "Telegram group"
+            suffix = f" | @{username}" if username else " | private/joined"
+            print(f"  {title}{suffix}")
+    else:
+        print("[MY CHATS SELECTED] none")
+
+    return selected
 
 
 async def discover_public_tourist_chats(client):
@@ -1687,6 +1829,159 @@ def parse_external_source(source, page_html):
     return []
 
 
+def _source_url_allowed(source, url):
+    """Проверяет, что поисковый результат действительно ведёт на нужную площадку."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        host = (parsed.netloc or "").lower()
+        domain = (source.get("domain") or "").lower()
+        if domain and not (host == domain or host.endswith("." + domain)):
+            return False
+        path_contains = source.get("path_contains")
+        if path_contains and path_contains.lower() not in (parsed.path or "").lower():
+            return False
+        return parsed.scheme in {"http", "https"}
+    except Exception:
+        return False
+
+
+def _unwrap_mojeek_href(href):
+    """Возвращает прямой URL результата, если Mojeek завернул его во внутреннюю ссылку."""
+    href = html.unescape((href or "").strip())
+    if not href:
+        return ""
+
+    if href.startswith("//"):
+        href = "https:" + href
+    elif href.startswith("/"):
+        href = urllib.parse.urljoin("https://www.mojeek.com/", href)
+
+    try:
+        parsed = urllib.parse.urlsplit(href)
+    except Exception:
+        return href
+
+    host = (parsed.netloc or "").lower()
+    if host.endswith("mojeek.com"):
+        params = urllib.parse.parse_qs(parsed.query)
+        for key in ("url", "u", "target", "r"):
+            values = params.get(key) or []
+            if not values:
+                continue
+            candidate = urllib.parse.unquote(values[0])
+            if candidate.startswith(("http://", "https://")):
+                return candidate
+
+    return href
+
+
+def _extract_mojeek_items(page_html, source):
+    """
+    Извлекает публичные поисковые результаты из HTML-страницы Mojeek.
+    Парсер намеренно простой: берём только ссылки, которые реально ведут
+    на нужный домен/путь, и короткий текст вокруг результата.
+    """
+    anchor_re = re.compile(
+        r'<a\b[^>]*?href\s*=\s*["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    items = []
+    seen_urls = set()
+
+    for match in anchor_re.finditer(page_html):
+        href = _unwrap_mojeek_href(match.group(1))
+        if not _source_url_allowed(source, href):
+            continue
+
+        title = clean_html_fragment(match.group(2))
+        if len(title) < 4:
+            continue
+
+        # Сниппет обычно находится рядом с заголовком результата.
+        left = max(0, match.start() - 250)
+        right = min(len(page_html), match.end() + 1200)
+        context = clean_html_fragment(page_html[left:right])
+        combined = normalize(" ".join(part for part in [title, context] if part))
+
+        if len(combined) < 8 or href in seen_urls:
+            continue
+
+        seen_urls.add(href)
+        items.append({
+            "url": href,
+            "text": combined[:2200],
+        })
+
+        if len(items) >= EXTERNAL_MAX_ITEMS_PER_SOURCE:
+            break
+
+    return items
+
+
+def fetch_mojeek_items(query, source):
+    """
+    Бесплатный публичный HTML-поиск Mojeek без API-ключа.
+    Это не запрос к защищённой площадке: бот читает только поисковую выдачу
+    Mojeek и не пытается обходить 401/403 TravelAsk/Tripadvisor/Babyblog.
+    """
+    params = {
+        "q": query,
+        "hp": "minimal",
+        "autocomp": "0",
+    }
+    url = "https://www.mojeek.com/search?" + urllib.parse.urlencode(params)
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/152.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.5",
+            "Cache-Control": "no-cache",
+        },
+        method="GET",
+    )
+
+    with urllib.request.urlopen(request, timeout=EXTERNAL_HTTP_TIMEOUT_SECONDS) as response:
+        raw = response.read(1_500_000)
+        charset = response.headers.get_content_charset() or "utf-8"
+
+    page_html = raw.decode(charset, errors="replace")
+    low = page_html.lower()
+    if "captcha" in low or "unusual traffic" in low or "access denied" in low:
+        raise RuntimeError("Mojeek returned an anti-automation/interstitial page")
+
+    return _extract_mojeek_items(page_html, source)
+
+
+def fetch_search_index_items(source):
+    """Ищет страницы площадки через публичную HTML-выдачу Mojeek."""
+    merged = {}
+    queries = source.get("search_queries") or []
+    errors = 0
+
+    for query in queries:
+        print(f"[MOJEEK] {source['name']}: {query}")
+        try:
+            found = fetch_mojeek_items(query, source)
+            print(f"[MOJEEK RESULT] {source['name']}: {len(found)} item(s)")
+            for item in found:
+                merged[item["url"]] = item
+        except Exception as exc:
+            errors += 1
+            print(f"[MOJEEK WARNING] {source['name']}: {exc}")
+
+    if queries and errors == len(queries):
+        raise RuntimeError("all Mojeek queries failed")
+
+    return list(merged.values())[:EXTERNAL_MAX_ITEMS_PER_SOURCE]
+
+
 def should_scan_external_now(state):
     if not EXTERNAL_WEB_ENABLED:
         return False
@@ -1754,6 +2049,18 @@ def scan_external_web_sources(state, stats):
 
     state.setdefault("external_seen", [])
     state.setdefault("external_initialized", {})
+
+    # Мы сменили бесплатный поисковый слой Bing RSS -> Mojeek HTML.
+    # Чтобы первый успешный Mojeek-запуск не прислал старые темы как новые,
+    # сбрасываем только базовую точку поисковых источников и создаём её заново.
+    search_engine_version = "mojeek_html_v1"
+    if state.get("external_search_engine_version") != search_engine_version:
+        for source in EXTERNAL_SOURCES:
+            if source.get("access") == "search_index":
+                state["external_initialized"].pop(source["key"], None)
+        state["external_search_engine_version"] = search_engine_version
+        print("[MOJEEK] search-index baseline reset for the new engine")
+
     seen_set = set(state.get("external_seen", []))
 
     print("")
@@ -1764,11 +2071,22 @@ def scan_external_web_sources(state, stats):
     for source in EXTERNAL_SOURCES:
         key = source["key"]
         name = source["name"]
-        print(f"[EXTERNAL] {name}: {source['url']}")
+        if source.get("access") == "search_index":
+            print(f"[EXTERNAL] {name}: free Mojeek search-index mode")
+        else:
+            print(f"[EXTERNAL] {name}: {source['url']}")
         try:
-            page_html = fetch_public_html(source["url"])
-            items = parse_external_source(source, page_html)
-            bump_stat(stats, "external_pages_ok")
+            access = source.get("access", "direct")
+
+            if access == "search_index":
+                items = fetch_search_index_items(source)
+                bump_stat(stats, "external_mojeek_ok")
+                print(f"[MOJEEK SOURCE RESULT] {name}: {len(items)} unique item(s)")
+            else:
+                page_html = fetch_public_html(source["url"])
+                items = parse_external_source(source, page_html)
+                bump_stat(stats, "external_pages_ok")
+
             bump_external_source(stats, name, "seen", len(items))
 
             item_ids = [external_item_id(key, item["url"]) for item in items]
@@ -1875,6 +2193,7 @@ def new_filter_stats():
         "low_score": 0,
         "accepted": 0,
         "external_pages_ok": 0,
+        "external_mojeek_ok": 0,
         "external_baseline": 0,
         "external_new": 0,
         "external_accepted": 0,
@@ -1943,7 +2262,8 @@ def print_filter_stats(stats):
             )
     print("")
     print("EXTERNAL SOURCE STATS")
-    print(f"  Pages fetched OK: {stats.get('external_pages_ok', 0)}")
+    print(f"  Direct pages OK:  {stats.get('external_pages_ok', 0)}")
+    print(f"  Mojeek sources OK:{stats.get('external_mojeek_ok', 0)}")
     print(f"  Baseline items:   {stats.get('external_baseline', 0)}")
     print(f"  New items:        {stats.get('external_new', 0)}")
     print(f"  Direct leads:     {stats.get('external_accepted', 0)}")
@@ -2029,9 +2349,14 @@ async def message_to_candidate(
             except Exception:
                 pass
 
-    if not is_allowed_chat(chat):
-        bump_stat(stats, "blocked_or_nonpublic_chat")
-        return None
+    if source_kind == "joined":
+        if not is_joined_tourist_chat(chat):
+            bump_stat(stats, "blocked_or_nonpublic_chat")
+            return None
+    else:
+        if not is_allowed_chat(chat):
+            bump_stat(stats, "blocked_or_nonpublic_chat")
+            return None
 
     try:
         sender = await message.get_sender()
@@ -2203,22 +2528,72 @@ async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats
     return candidates
 
 
+async def joined_chat_scan_worker(client, state, cutoff, self_user_id, stats):
+    """
+    Сканирует только тематические группы, в которые аккаунт уже вступил сам.
+    Личные переписки и обычные нетуристические группы не затрагиваются.
+    """
+    candidates = {}
+    chats = await list_joined_tourist_chats(client)
+
+    for entity in chats:
+        title = getattr(entity, "title", None) or "Telegram group"
+        username = getattr(entity, "username", None)
+        source_name = f"MY:{title}"
+        if username:
+            source_name += f" (@{username})"
+
+        print(f"[MY CHAT] {source_name}")
+
+        try:
+            async for message in client.iter_messages(entity, limit=MY_CHATS_SCAN_LIMIT):
+                if message.date:
+                    date = message.date
+                    if date.tzinfo is None:
+                        date = date.replace(tzinfo=timezone.utc)
+                    if date < cutoff:
+                        break
+
+                item = await message_to_candidate(
+                    client,
+                    message,
+                    cutoff,
+                    state,
+                    "joined",
+                    source_name,
+                    self_user_id,
+                    stats,
+                )
+                merge_candidate(candidates, item)
+
+        except FloodWaitError as exc:
+            print(f"[MY CHAT FLOOD WAIT] {source_name}: {exc.seconds}s")
+            if exc.seconds <= 60:
+                await asyncio.sleep(exc.seconds + 1)
+        except Exception as exc:
+            print(f"[MY CHAT WARNING] {source_name}: {exc}")
+
+    return candidates
+
+
 async def search_public_messages(client, state, self_user_id):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
     stats = new_filter_stats()
 
-    # Три независимых потока поиска:
+    # Четыре независимых потока поиска:
     # 1) глобальный Telegram-поиск;
     # 2) наш белый список;
-    # 3) автоматическое обнаружение новых публичных туристических групп.
-    global_results, chat_results, discovered_results = await asyncio.gather(
+    # 3) автоматическое обнаружение новых публичных туристических групп;
+    # 4) тематические группы, в которые пользователь уже вступил сам.
+    global_results, chat_results, discovered_results, joined_results = await asyncio.gather(
         global_search_worker(client, state, cutoff, self_user_id, stats),
         chat_scan_worker(client, state, cutoff, self_user_id, stats),
         discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats),
+        joined_chat_scan_worker(client, state, cutoff, self_user_id, stats),
     )
 
     candidates = {}
-    for source in (global_results, chat_results, discovered_results):
+    for source in (global_results, chat_results, discovered_results, joined_results):
         for item in source.values():
             merge_candidate(candidates, item)
 
