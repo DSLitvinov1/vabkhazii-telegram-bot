@@ -464,16 +464,24 @@ def bot_api(method, data):
     return result
 
 
-def send_private_message(text):
-    bot_api(
-        "sendMessage",
-        {
-            "chat_id": LEADS_CHAT_ID,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": "true",
-        },
-    )
+def send_private_message(text, reply_to_message_id=None, parse_html=True):
+    data = {
+        "chat_id": LEADS_CHAT_ID,
+        "text": text,
+        "disable_web_page_preview": "true",
+    }
+
+    if parse_html:
+        data["parse_mode"] = "HTML"
+
+    if reply_to_message_id:
+        data["reply_parameters"] = json.dumps(
+            {"message_id": int(reply_to_message_id)},
+            ensure_ascii=False,
+        )
+
+    result = bot_api("sendMessage", data)
+    return result.get("result", {}).get("message_id")
 
 
 # =========================================================
@@ -1010,8 +1018,27 @@ def detect_lead_type(text):
     ]):
         companion_score += 4
 
-    if detect_route(text):
+    detected_route = detect_route(text)
+    if detected_route:
         excursion_score += 2
+
+    # Запросы по храмам и святыням трактуем как экскурсионный интерес,
+    # даже если пользователь пишет «кто едет до Илора».
+    shrine_markers = [
+        "илор", "каманы", "дранда", "бедиа", "бедий",
+        "монастыр", "храм", "святын", "святые места",
+    ]
+    shrine_intent = any(marker in lower for marker in shrine_markers)
+    if shrine_intent:
+        excursion_score += 10
+        if any(phrase in lower for phrase in [
+            "как попасть", "как доехать", "кто едет", "едет кто",
+            "хочу", "хотим", "поехать", "съездить", "посетить",
+        ]):
+            excursion_score += 5
+        # Чтобы «кто едет до Илора? Как попасть в храм?» не становилось
+        # обычным добором попутчиков.
+        companion_score = max(0, companion_score - 5)
 
     # Не позволяем одному названию Рицы/Нового Афона превращать транспортный
     # вопрос между городами в «экскурсию».
@@ -1179,7 +1206,11 @@ def make_reply(text, lead_type):
         parts.append("Напишите дату поездки и сколько вас человек.")
 
     else:
-        if route:
+        if route == "Святыни":
+            parts.append("Могу организовать поездку по святыням Абхазии.")
+            if "илор" in text.lower():
+                parts.append("Можно включить Илорский храм в маршрут.")
+        elif route:
             parts.append(f"Могу организовать поездку по маршруту «{route}».")
         else:
             parts.append("Могу помочь подобрать экскурсию по Абхазии под ваши пожелания.")
@@ -1235,8 +1266,6 @@ def make_card(text, entity, sender, message_id, date, classification):
     flight_train = detect_flight_train(text)
     places = detect_all_places(text)
     link = build_message_link(entity, message_id)
-    reply = make_reply(text, lead_type)
-
     sender_name = None
     sender_username = None
     if sender:
@@ -1293,9 +1322,6 @@ def make_card(text, entity, sender, message_id, date, classification):
         "",
         "💬 <b>Сообщение:</b>",
         html.escape(text[:1200]),
-        "",
-        "✍️ <b>Черновик ответа:</b>",
-        html.escape(reply),
     ]
 
     if link:
@@ -1733,8 +1759,25 @@ async def async_main():
                     lead["date"],
                     lead["classification"],
                 )
-                send_private_message(card)
+                card_message_id = send_private_message(card)
                 state.setdefault("seen", []).append(lead["id"])
+
+                # Черновик ответа отправляем отдельным сообщением без HTML,
+                # чтобы его можно было скопировать целиком одним нажатием.
+                draft = make_reply(
+                    lead["text"],
+                    lead["classification"]["lead_type"],
+                )
+                if draft:
+                    try:
+                        send_private_message(
+                            draft,
+                            reply_to_message_id=card_message_id,
+                            parse_html=False,
+                        )
+                    except Exception as draft_exc:
+                        print("Draft send warning:", draft_exc)
+
                 sent += 1
             except Exception as exc:
                 print("Send warning:", exc)
