@@ -65,7 +65,8 @@ async def main():
     seen.add(k); sc,why=score(m.message)
     if sc<MIN_SCORE: continue
     username=getattr(chat,'username',None); url=f'https://t.me/{username}/{m.id}' if username else ''
-    found.append((sc,m.date,m.message,url,why,'Telegram'))
+    title=getattr(chat,'title',None) or username or 'public'
+    found.append((sc,m.date,m.message,url,why,f'Telegram: {title}'))
   except FloodWaitError as e:
    if e.seconds<=60: await asyncio.sleep(e.seconds+1)
    else: print('GLOBAL_FLOOD_WAIT',e.seconds); break
@@ -81,7 +82,8 @@ async def main():
     seen.add(k); sc,why=score(m.message)
     if sc<MIN_SCORE: continue
     username=getattr(chat,'username',None); url=f'https://t.me/{username}/{m.id}' if username else ''
-    found.append((sc,m.date,m.message,url,why,'Telegram'))
+    title=getattr(chat,'title',None) or username or 'public'
+    found.append((sc,m.date,m.message,url,why,f'Telegram: {title}'))
   except Exception as e: print('SCAN_WARN',getattr(chat,'title','?'),type(e).__name__)
  found=merge_unique(found)
  found=[x for x in found if x[0]>=MIN_SCORE]
