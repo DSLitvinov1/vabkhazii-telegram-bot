@@ -66,7 +66,7 @@ jobs:
           LEADS_CHAT_ID: "@logopedutkina"
           MIN_SCORE: "50"
           MAX_AGE_HOURS: "72"
-          MAX_LEADS_PER_RUN: "12"
+          MAX_LEADS_PER_RUN: "0"
           RUN_INTERVAL_MINUTES: "10"
           FORCE_RUN: ${{ inputs.force_logolead || '0' }}
           DISCOVERY_INTERVAL_MINUTES: "360"
@@ -81,8 +81,8 @@ jobs:
           MARKET_INTERVAL_MINUTES: "30"
           ENABLE_WEB: "0"
           WEB_INTERVAL_MINUTES: "60"
-          SEND_STATUS: "1"
-          STATUS_INTERVAL_HOURS: "0"
+          SEND_STATUS: "0"
+          STATUS_INTERVAL_HOURS: "24"
         run: python lead_bot.py
 
       - name: Check VAbkhazii lead bot syntax
