@@ -2,6 +2,11 @@ name: VAbkhazii Leads Bot
 
 on:
   workflow_dispatch:
+    inputs:
+      force_logolead:
+        description: "Force LogoLead scan now"
+        required: false
+        default: "0"
 
   schedule:
     - cron: "*/5 * * * *"
@@ -59,6 +64,8 @@ jobs:
           python test_reply.py
           python test_classifier.py
           python test_web.py
+          python test_state.py
+          python test_sources.py
           python test_full.py
 
       - name: Run LogoLead
@@ -73,7 +80,11 @@ jobs:
           MAX_AGE_HOURS: "72"
           MAX_LEADS_PER_RUN: "12"
           RUN_INTERVAL_MINUTES: "10"
-          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' }}
-          ENABLE_WEB: "1"
+          FORCE_RUN: ${{ github.event.inputs.force_logolead || '0' }}
+          ENABLE_WEB: "0"
           WEB_INTERVAL_MINUTES: "60"
+          DISCOVERY_INTERVAL_MINUTES: "360"
+          MAX_DISCOVERED_GROUPS: "30"
+          GROUP_SCAN_LIMIT: "80"
+          INITIAL_GROUP_SCAN_LIMIT: "180"
         run: python lead_bot.py

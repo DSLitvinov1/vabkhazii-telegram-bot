@@ -9,129 +9,269 @@ from classifier import score
 from card import build
 from web_sources import collect_web
 from sources import merge_unique
-TG_API_ID=int(os.environ.get("TG_API_ID","0")); TG_API_HASH=os.environ.get("TG_API_HASH",""); TG_SESSION=os.environ.get("TG_SESSION","")
-BOT_TOKEN=os.environ.get("LEADS_BOT_TOKEN",""); CHAT_ID=os.environ.get("LEADS_CHAT_ID","")
-STATE_VERSION=2
-STATE_DIR=Path('.lead_state'); STATE_FILE=STATE_DIR/'state.json'
-MAX_AGE_HOURS=int(os.environ.get("MAX_AGE_HOURS","72")); SEARCH_LIMIT=40; MAX_LEADS_PER_RUN=int(os.environ.get("MAX_LEADS_PER_RUN","25")); MIN_SCORE=int(os.environ.get("MIN_SCORE","35"))
+
+TG_API_ID=int(os.environ.get('TG_API_ID','0'))
+TG_API_HASH=os.environ.get('TG_API_HASH','')
+TG_SESSION=os.environ.get('TG_SESSION','')
+BOT_TOKEN=os.environ.get('LEADS_BOT_TOKEN','')
+CHAT_ID=os.environ.get('LEADS_CHAT_ID','')
+
+STATE_VERSION=3
+STATE_DIR=Path('.lead_state')
+STATE_FILE=STATE_DIR/'state.json'
+MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
+SEARCH_LIMIT=int(os.environ.get('SEARCH_LIMIT','40'))
+MAX_LEADS_PER_RUN=int(os.environ.get('MAX_LEADS_PER_RUN','25'))
+MIN_SCORE=int(os.environ.get('MIN_SCORE','35'))
 RUN_INTERVAL_MINUTES=int(os.environ.get('RUN_INTERVAL_MINUTES','10'))
+DISCOVERY_INTERVAL_MINUTES=int(os.environ.get('DISCOVERY_INTERVAL_MINUTES','360'))
+GROUP_SCAN_LIMIT=int(os.environ.get('GROUP_SCAN_LIMIT','80'))
+INITIAL_GROUP_SCAN_LIMIT=int(os.environ.get('INITIAL_GROUP_SCAN_LIMIT','180'))
+MAX_DISCOVERED_GROUPS=int(os.environ.get('MAX_DISCOVERED_GROUPS','30'))
 WEB_INTERVAL_MINUTES=int(os.environ.get('WEB_INTERVAL_MINUTES','60'))
 ENABLE_WEB=os.environ.get('ENABLE_WEB','0').strip().lower() in {'1','true','yes','on'}
 FORCE_RUN=os.environ.get('FORCE_RUN','0').strip().lower() in {'1','true','yes','on'}
-SEARCH_QUERIES=[
- "ищу логопеда","нужен логопед ребенку","посоветуйте логопеда","логопед онлайн",
- "ребенок не говорит логопед","ребенок не говорит","плохо говорит ребенок","куда обратиться ребенок не говорит",
- "не выговаривает р логопед","не выговаривает л логопед","запуск речи логопед","ЗРР логопед",
- "нужен дефектолог","дисграфия логопед","дислексия логопед"]
-def load_state():
- STATE_DIR.mkdir(exist_ok=True)
- try:
-  st=json.loads(STATE_FILE.read_text('utf-8'))
-  if st.get('version')==STATE_VERSION:return st
- except Exception:pass
- return {'version':STATE_VERSION,'seen':[]}
-def save_state(st):
- st['version']=STATE_VERSION
- STATE_FILE.write_text(json.dumps(st,ensure_ascii=False,indent=2),'utf-8')
-def key(chat_id,msg_id): return hashlib.sha256(f'{chat_id}:{msg_id}'.encode()).hexdigest()
-async def notify(text):
- if not BOT_TOKEN or not CHAT_ID:
-  print('DRY_SEND',text.encode('ascii','backslashreplace').decode()[:300]); return
- data=urllib.parse.urlencode({'chat_id':CHAT_ID,'text':text,'disable_web_page_preview':'true'}).encode()
- req=urllib.request.Request(f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',data=data)
- await asyncio.to_thread(urllib.request.urlopen,req,timeout=20)
-async def main():
- if not (TG_API_ID and TG_API_HASH and TG_SESSION): raise RuntimeError('Missing Telegram user credentials')
- if not (BOT_TOKEN and CHAT_ID): raise RuntimeError('Missing Telegram bot delivery credentials')
- st=load_state(); seen=set(st.get('seen',[])); found=[]
- now=datetime.now(timezone.utc)
- if not FORCE_RUN and RUN_INTERVAL_MINUTES>0 and st.get('last_run'):
-  try:
-   last=datetime.fromisoformat(st['last_run'])
-   if now-last<timedelta(minutes=RUN_INTERVAL_MINUTES-1):
-    print('SKIP_INTERVAL',st['last_run']); return
-  except Exception:pass
- client=TelegramClient(StringSession(TG_SESSION),TG_API_ID,TG_API_HASH)
- await client.connect()
- if not await client.is_user_authorized(): raise RuntimeError('TG_SESSION not authorized')
- cutoff=datetime.now(timezone.utc)-timedelta(hours=MAX_AGE_HOURS)
- # True Telegram global message search (ported from the proven production lead bot).
- for q in SEARCH_QUERIES:
-  try:
-   async for m in client.iter_messages(None,search=q,limit=SEARCH_LIMIT):
-    if not m.message or not m.date or m.date<cutoff: continue
-    chat=await m.get_chat(); chat_id=getattr(chat,'id',0); k=key(chat_id,m.id)
-    if k in seen: continue
-    seen.add(k); sc,why=score(m.message)
-    if sc<MIN_SCORE: continue
-    username=getattr(chat,'username',None); url=f'https://t.me/{username}/{m.id}' if username else ''
-    title=getattr(chat,'title',None) or username or 'public'
-    found.append((sc,m.date,m.message,url,why,f'Telegram: {title}'))
-  except FloodWaitError as e:
-   if e.seconds<=60: await asyncio.sleep(e.seconds+1)
-   else: print('GLOBAL_FLOOD_WAIT',e.seconds); break
-  except Exception as e: print('GLOBAL_WARN',q,type(e).__name__)
- discovered=await discover_public_groups(client)
- print('DISCOVERED_GROUPS',len(discovered))
- for chat in discovered:
-  try:
-   async for m in client.iter_messages(chat,limit=80):
-    if not m.message or not m.date or m.date<cutoff: continue
-    k=key(getattr(chat,'id',0),m.id)
-    if k in seen: continue
-    seen.add(k); sc,why=score(m.message)
-    if sc<MIN_SCORE: continue
-    username=getattr(chat,'username',None); url=f'https://t.me/{username}/{m.id}' if username else ''
-    title=getattr(chat,'title',None) or username or 'public'
-    found.append((sc,m.date,m.message,url,why,f'Telegram: {title}'))
-  except Exception as e: print('SCAN_WARN',getattr(chat,'title','?'),type(e).__name__)
- found=merge_unique(found)
- found=[x for x in found if x[0]>=MIN_SCORE]
- # Web sources run less often than Telegram to reduce load on public sites.
- web_due=ENABLE_WEB
- if web_due and not FORCE_RUN and st.get('last_web_run'):
-  try:web_due=now-datetime.fromisoformat(st['last_web_run'])>=timedelta(minutes=WEB_INTERVAL_MINUTES)
-  except Exception:web_due=True
- try:
-  for item in (await asyncio.to_thread(collect_web,MAX_AGE_HOURS) if web_due else []):
-   k=hashlib.sha256(item['url'].encode()).hexdigest()
-   if k in seen: continue
-   seen.add(k); sc,why=score(item['text'])
-   if sc<MIN_SCORE: continue
-   dt=item.get('published') or datetime.now(timezone.utc)
-   found.append((sc,dt,item['text'],item['url'],why,item.get('source','Web')))
-  if web_due:st['last_web_run']=datetime.now(timezone.utc).isoformat()
- except Exception as e: print('WEB_SCAN_WARN',type(e).__name__)
- found.sort(key=lambda x:(x[0],x[1]),reverse=True)
- for sc,dt,msg,url,why,source in found[:MAX_LEADS_PER_RUN]:
-  published=dt.strftime('%d.%m %H:%M UTC')
-  card=build(msg,url,source,sc,why,published)
-  await notify(card)
- st['seen']=list(seen)[-15000:]
- st['last_run']=datetime.now(timezone.utc).isoformat()
- save_state(st); await client.disconnect()
- print('FOUND',len(found),'SENT',min(len(found),MAX_LEADS_PER_RUN))
-# Public-group discovery: only publicly searchable Telegram groups; no auto-join.
-DISCOVERY_QUERIES=[
- 'логопед родители чат','мамы дети развитие речи','запуск речи родители',
- 'ЗРР родители чат','детский сад родители чат','подготовка к школе родители',
- 'дисграфия родители','дислексия родители','дефектолог родители']
-COMMERCIAL_CHAT_MARKERS=['услуги логопеда','логопедический центр','школа логопеда','курсы логопедов','вакансии логопед']
-async def discover_public_groups(client):
- groups={}
- for q in DISCOVERY_QUERIES:
-  try:
-   result=await client(SearchRequest(q=q,limit=20))
-   for chat in result.chats:
-    title=(getattr(chat,'title','') or '').lower()
-    username=getattr(chat,'username',None)
-    if not username or getattr(chat,'broadcast',False): continue
-    if any(x in title for x in COMMERCIAL_CHAT_MARKERS): continue
-    groups[getattr(chat,'id',username)]=chat
-  except FloodWaitError as e:
-   if e.seconds<=60: await asyncio.sleep(e.seconds+1)
-   else: print('DISCOVERY_FLOOD_WAIT',e.seconds); break
-  except Exception as e: print('DISCOVERY_WARN',q,type(e).__name__)
- return list(groups.values())[:25]
 
-if __name__=='__main__': asyncio.run(main())
+SEARCH_QUERIES=[
+    'ищу логопеда','ищем логопеда','нужен логопед ребенку','нужен логопед ребёнку',
+    'посоветуйте логопеда','порекомендуйте логопеда','хороший логопед ребенку',
+    'логопед для ребенка','логопед для ребёнка','логопед онлайн','ищу логопеда онлайн',
+    'нужен дефектолог','посоветуйте дефектолога','порекомендуйте дефектолога',
+    'ребенок не говорит','ребёнок не говорит','не говорит предложениями',
+    'плохо говорит ребенок','плохо говорит ребёнок','не выговаривает р',
+    'не выговаривает л','не выговаривает звуки','запуск речи','ЗРР логопед',
+    'ЗПРР логопед','дисграфия логопед','дислексия логопед',
+]
+DISCOVERY_QUERIES=[
+    'логопед родители чат','мамы дети развитие речи','запуск речи родители',
+    'ЗРР родители чат','ЗПРР родители чат','дефектолог родители',
+    'детский сад родители чат','подготовка к школе родители',
+    'мамы дошкольников чат','мамочки чат дети','родители дети чат',
+    'особенные дети родители','развитие детей родители чат',
+    'мамы москва чат','мамы спб чат','мамы краснодар чат','мамы сочи чат',
+    'мамы казань чат','мамы екатеринбург чат',
+]
+COMMERCIAL_CHAT_MARKERS=[
+    'услуги логопеда','логопедический центр','школа логопеда',
+    'курсы логопедов','вакансии логопед','обучение логопедов',
+]
+
+def load_state():
+    STATE_DIR.mkdir(exist_ok=True)
+    try:
+        state=json.loads(STATE_FILE.read_text('utf-8'))
+        if not isinstance(state,dict): raise ValueError('bad state')
+    except Exception:
+        state={}
+    state.setdefault('seen',[])
+    state.setdefault('groups',{})
+    state.setdefault('group_last_ids',{})
+    state['version']=STATE_VERSION
+    return state
+
+def save_state(state):
+    state['version']=STATE_VERSION
+    STATE_FILE.write_text(json.dumps(state,ensure_ascii=False,indent=2),'utf-8')
+
+def message_key(chat_id,msg_id):
+    return hashlib.sha256(f'{chat_id}:{msg_id}'.encode()).hexdigest()
+
+async def notify(text):
+    if not BOT_TOKEN or not CHAT_ID:
+        print('DRY_SEND',text.encode('ascii','backslashreplace').decode()[:400])
+        return
+    data=urllib.parse.urlencode({
+        'chat_id':CHAT_ID,
+        'text':text,
+        'disable_web_page_preview':'true',
+    }).encode()
+    req=urllib.request.Request(f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',data=data)
+    def send():
+        with urllib.request.urlopen(req,timeout=20) as response:
+            response.read(2000)
+    await asyncio.to_thread(send)
+
+async def discover_public_groups(client,state,now):
+    cached=state.get('groups') or {}
+    due=not cached
+    if cached and not FORCE_RUN and state.get('last_discovery'):
+        try:
+            due=now-datetime.fromisoformat(state['last_discovery'])>=timedelta(minutes=DISCOVERY_INTERVAL_MINUTES)
+        except Exception:
+            due=True
+    if not due:
+        print('DISCOVERY_CACHE',len(cached))
+        return cached
+
+    groups={}
+    for query in DISCOVERY_QUERIES:
+        try:
+            result=await client(SearchRequest(q=query,limit=20))
+            for chat in result.chats:
+                title=(getattr(chat,'title','') or '').strip()
+                low=title.lower()
+                username=getattr(chat,'username',None)
+                if not username or getattr(chat,'broadcast',False):
+                    continue
+                if any(marker in low for marker in COMMERCIAL_CHAT_MARKERS):
+                    continue
+                groups[username]=title or username
+                if len(groups)>=MAX_DISCOVERED_GROUPS:
+                    break
+        except FloodWaitError as exc:
+            if exc.seconds<=60:
+                await asyncio.sleep(exc.seconds+1)
+            else:
+                print('DISCOVERY_FLOOD_WAIT',exc.seconds)
+                break
+        except Exception as exc:
+            print('DISCOVERY_WARN',query,type(exc).__name__)
+        if len(groups)>=MAX_DISCOVERED_GROUPS:
+            break
+
+    if groups:
+        state['groups']=groups
+    state['last_discovery']=now.isoformat()
+    print('DISCOVERED_GROUPS',len(state.get('groups') or {}))
+    return state.get('groups') or {}
+
+async def main():
+    if not (TG_API_ID and TG_API_HASH and TG_SESSION):
+        raise RuntimeError('Missing Telegram user credentials')
+    if not (BOT_TOKEN and CHAT_ID):
+        raise RuntimeError('Missing Telegram bot delivery credentials')
+
+    state=load_state()
+    seen=dict.fromkeys(state.get('seen',[]))
+    found=[]
+    now=datetime.now(timezone.utc)
+
+    if not FORCE_RUN and RUN_INTERVAL_MINUTES>0 and state.get('last_run'):
+        try:
+            last=datetime.fromisoformat(state['last_run'])
+            if now-last<timedelta(minutes=RUN_INTERVAL_MINUTES-1):
+                print('SKIP_INTERVAL',state['last_run'])
+                return
+        except Exception:
+            pass
+
+    client=TelegramClient(StringSession(TG_SESSION),TG_API_ID,TG_API_HASH)
+    await client.connect()
+    if not await client.is_user_authorized():
+        raise RuntimeError('TG_SESSION not authorized')
+
+    cutoff=now-timedelta(hours=MAX_AGE_HOURS)
+
+    for query in SEARCH_QUERIES:
+        try:
+            async for message in client.iter_messages(None,search=query,limit=SEARCH_LIMIT):
+                if not message.message or not message.date:
+                    continue
+                if message.date<cutoff:
+                    break
+                chat=await message.get_chat()
+                chat_id=getattr(chat,'id',0)
+                key=message_key(chat_id,message.id)
+                if key in seen:
+                    continue
+                seen[key]=None
+                value,reasons=score(message.message)
+                if value<MIN_SCORE:
+                    continue
+                username=getattr(chat,'username',None)
+                url=f'https://t.me/{username}/{message.id}' if username else ''
+                title=getattr(chat,'title',None) or username or 'public'
+                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title}',key))
+        except FloodWaitError as exc:
+            if exc.seconds<=60:
+                await asyncio.sleep(exc.seconds+1)
+            else:
+                print('GLOBAL_FLOOD_WAIT',exc.seconds)
+                break
+        except Exception as exc:
+            print('GLOBAL_WARN',query,type(exc).__name__)
+
+    groups=await discover_public_groups(client,state,now)
+    group_last_ids=state.get('group_last_ids') or {}
+
+    for username,title in list(groups.items())[:MAX_DISCOVERED_GROUPS]:
+        min_id=int(group_last_ids.get(username,0) or 0)
+        newest_id=min_id
+        try:
+            scan_limit=INITIAL_GROUP_SCAN_LIMIT if min_id==0 else GROUP_SCAN_LIMIT
+            async for message in client.iter_messages(username,limit=scan_limit,min_id=min_id):
+                newest_id=max(newest_id,message.id)
+                if not message.message or not message.date:
+                    continue
+                if message.date<cutoff:
+                    break
+                key=message_key(username,message.id)
+                if key in seen:
+                    continue
+                seen[key]=None
+                value,reasons=score(message.message)
+                if value<MIN_SCORE:
+                    continue
+                url=f'https://t.me/{username}/{message.id}'
+                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title or username}',key))
+            if newest_id>min_id:
+                group_last_ids[username]=newest_id
+        except FloodWaitError as exc:
+            if exc.seconds<=60:
+                await asyncio.sleep(exc.seconds+1)
+            else:
+                print('GROUP_FLOOD_WAIT',username,exc.seconds)
+                break
+        except Exception as exc:
+            print('SCAN_WARN',username,type(exc).__name__)
+
+    state['group_last_ids']=group_last_ids
+    found=merge_unique(found)
+    found=[item for item in found if item[0]>=MIN_SCORE]
+
+    web_due=ENABLE_WEB
+    if web_due and not FORCE_RUN and state.get('last_web_run'):
+        try:
+            web_due=now-datetime.fromisoformat(state['last_web_run'])>=timedelta(minutes=WEB_INTERVAL_MINUTES)
+        except Exception:
+            web_due=True
+
+    try:
+        web_items=await asyncio.to_thread(collect_web,MAX_AGE_HOURS) if web_due else []
+        print('WEB_ITEMS',len(web_items))
+        for item in web_items:
+            key=hashlib.sha256(item['url'].encode()).hexdigest()
+            if key in seen:
+                continue
+            seen[key]=None
+            value,reasons=score(item['text'])
+            if value<MIN_SCORE:
+                continue
+            published=item.get('published') or datetime.now(timezone.utc)
+            found.append((value,published,item['text'],item['url'],reasons,item.get('source','Web'),key))
+        if web_due:
+            state['last_web_run']=datetime.now(timezone.utc).isoformat()
+    except Exception as exc:
+        print('WEB_SCAN_WARN',type(exc).__name__)
+
+    found.sort(key=lambda item:(item[0],item[1]),reverse=True)
+    sent=0
+    failed=0
+    for value,published,text,url,reasons,source,seen_key in found[:MAX_LEADS_PER_RUN]:
+        card=build(text,url,source,value,reasons,published.strftime('%d.%m %H:%M UTC'))
+        try:
+            await notify(card)
+            sent+=1
+        except Exception as exc:
+            failed+=1
+            seen.pop(seen_key,None)
+            print('SEND_WARN',source,type(exc).__name__)
+
+    state['seen']=list(seen.keys())[-20000:]
+    state['last_run']=datetime.now(timezone.utc).isoformat()
+    save_state(state)
+    await client.disconnect()
+    print('FOUND',len(found),'SENT',sent,'SEND_FAILED',failed,'GROUPS',len(groups),'SEEN',len(state['seen']))
+
+if __name__=='__main__':
+    asyncio.run(main())
