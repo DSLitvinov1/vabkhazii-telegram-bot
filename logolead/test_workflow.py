@@ -14,4 +14,10 @@ assert 'LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}' in workflow
 assert '@logopedutkina' not in workflow
 assert workflow.index('- name: Run LogoLead') < workflow.index('- name: Run VAbkhazii Leads Bot')
 assert 'python test_notify.py' in workflow
+assert 'python test_target.py' in workflow
+target_workflow=Path('../.github/workflows/check-logolead-target.yml').read_text(encoding='utf-8')
+assert 'workflow_dispatch:' in target_workflow
+assert 'schedule:' not in target_workflow
+assert 'TARGET_USERNAME: ${{ inputs.username }}' in target_workflow
+assert 'python target_ready.py' in target_workflow
 print('WORKFLOW_TEST_OK')

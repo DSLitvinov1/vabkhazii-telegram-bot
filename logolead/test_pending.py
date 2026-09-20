@@ -21,5 +21,12 @@ assert lead_bot.pending_to_candidate(stored,published+timedelta(seconds=1),{}) i
 assert lead_bot.pending_to_candidate(stored,cutoff,{restored[7]:None}) is None
 excluded=dict(stored); excluded['source']='Telegram: VAbkhaziiLeadsBot'
 assert lead_bot.pending_to_candidate(excluded,cutoff,{}) is None
+stats=lead_bot.pending_stats([
+    {'source':'Telegram: moms','score':90},
+    {'source':'Telegram: parents','score':60},
+    {'source':'Kwork','score':80},
+])
+assert stats['total']==3 and stats['hot']==2
+assert ('Telegram',2) in stats['sources'] and ('Kwork',1) in stats['sources']
 
 print('PENDING_TEST_OK')

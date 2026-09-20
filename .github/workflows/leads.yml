@@ -59,6 +59,7 @@ jobs:
           python test_state.py
           python test_sources.py
           python test_workflow.py
+          python test_target.py
           python test_full.py
 
       - name: Run LogoLead

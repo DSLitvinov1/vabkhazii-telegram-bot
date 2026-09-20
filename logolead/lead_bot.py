@@ -16,7 +16,7 @@ TG_API_ID=int(os.environ.get('TG_API_ID','0'))
 TG_API_HASH=os.environ.get('TG_API_HASH','')
 TG_SESSION=os.environ.get('TG_SESSION','')
 BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN') or os.environ.get('LEADS_BOT_TOKEN','')
-CHAT_ID=(os.environ.get('LOGOLEAD_CHAT_ID') if 'LOGOLEAD_CHAT_ID' in os.environ else os.environ.get('LEADS_CHAT_ID',''))
+CHAT_ID=os.environ.get('LOGOLEAD_CHAT_ID','')
 
 STATE_VERSION=4
 CLASSIFIER_VERSION=6
@@ -42,7 +42,7 @@ WEB_INTERVAL_MINUTES=int(os.environ.get('WEB_INTERVAL_MINUTES','60'))
 MARKET_INTERVAL_MINUTES=int(os.environ.get('MARKET_INTERVAL_MINUTES','30'))
 ENABLE_WEB=os.environ.get('ENABLE_WEB','0').strip().lower() in {'1','true','yes','on'}
 ENABLE_MARKETS=os.environ.get('ENABLE_MARKETS','1').strip().lower() in {'1','true','yes','on'}
-DELIVERY_ENABLED=os.environ.get('DELIVERY_ENABLED','1').strip().lower() in {'1','true','yes','on'}
+DELIVERY_ENABLED=os.environ.get('DELIVERY_ENABLED','0').strip().lower() in {'1','true','yes','on'}
 FORCE_RUN=os.environ.get('FORCE_RUN','0').strip().lower() in {'1','true','yes','on'}
 SEND_STATUS=os.environ.get('SEND_STATUS','0').strip().lower() in {'1','true','yes','on'}
 STATUS_INTERVAL_HOURS=int(os.environ.get('STATUS_INTERVAL_HOURS','24'))
@@ -211,6 +211,17 @@ def candidate_to_pending(item):
         'score':value,
         'sent_key':sent_key,
     }
+
+def pending_stats(items):
+    sources={}
+    hot=0
+    for item in items:
+        source=(item.get('source') or 'Unknown').split(':',1)[0]
+        sources[source]=sources.get(source,0)+1
+        if int(item.get('score') or 0)>=75:
+            hot+=1
+    top_sources=sorted(sources.items(),key=lambda x:x[1],reverse=True)[:8]
+    return {'total':len(items),'hot':hot,'sources':top_sources}
 
 async def notify(text):
     if not BOT_TOKEN or not CHAT_ID:
@@ -683,6 +694,7 @@ async def main():
     remaining=merge_unique([item for item in remaining if item[7] not in sent_keys])
     remaining.sort(key=lambda item:(item[0],item[1]),reverse=True)
     state['pending']=[candidate_to_pending(item) for item in remaining[:PENDING_LIMIT]]
+    print('PENDING_STATS',json.dumps(pending_stats(state['pending']),ensure_ascii=False))
 
     status_due=DELIVERY_ENABLED and SEND_STATUS and not state.get('last_status')
     if DELIVERY_ENABLED and SEND_STATUS and state.get('last_status'):

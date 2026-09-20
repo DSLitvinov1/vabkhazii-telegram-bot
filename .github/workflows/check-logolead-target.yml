@@ -1,0 +1,30 @@
+name: Check LogoLead Target
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: "Telegram username without @"
+        required: true
+        default: "logopedutkina"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install telethon
+      - name: Check target readiness
+        working-directory: logolead
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+          LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          TARGET_USERNAME: ${{ inputs.username }}
+        run: python target_ready.py
