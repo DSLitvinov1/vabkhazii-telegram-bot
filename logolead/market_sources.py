@@ -1,12 +1,10 @@
 import json, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) LogoLead/1.0'
 KWORK_BASE='https://kwork.ru'
-KWORK_QUERIES=[
-    'логопед','дефектолог','нейрологопед','запуск речи',
-    'дисграфия','дислексия','постановка звуков',
-]
+KWORK_QUERIES=['логопед','дефектолог','нейрологопед','дисграфия','дислексия']
 
 def fetch_text(url,limit=2_000_000):
     req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept-Language':'ru-RU,ru;q=0.9'})
@@ -59,19 +57,27 @@ def kwork_project_text(item):
         parts.append(f'Бюджет: {price}')
     return ' '.join(x for x in parts if x).strip()
 
+def fetch_kwork_query(query):
+    url=KWORK_BASE+'/projects?'+urllib.parse.urlencode({'keyword':query})
+    page=fetch_text(url)
+    raw=extract_json_object_after(page,'"wantsListData":')
+    if not raw:
+        raise ValueError('no_state')
+    state=json.loads(raw)
+    return ((state.get('pagination') or {}).get('data') or state.get('wants') or [])
+
 def collect_kwork(max_age_hours=72):
     cutoff=datetime.now(timezone.utc)-timedelta(hours=max_age_hours)
     merged={}
-    for query in KWORK_QUERIES:
-        url=KWORK_BASE+'/projects?'+urllib.parse.urlencode({'keyword':query})
-        try:
-            page=fetch_text(url)
-            raw=extract_json_object_after(page,'"wantsListData":')
-            if not raw:
-                print('KWORK_PARSE_WARN',query,'no_state')
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures={pool.submit(fetch_kwork_query,query):query for query in KWORK_QUERIES}
+        for future in as_completed(futures):
+            query=futures[future]
+            try:
+                rows=future.result()
+            except Exception as exc:
+                print('KWORK_WARN',query,type(exc).__name__)
                 continue
-            state=json.loads(raw)
-            rows=((state.get('pagination') or {}).get('data') or state.get('wants') or [])
             for item in rows:
                 if not item.get('isWantActive',item.get('status')=='active'):
                     continue
@@ -91,8 +97,6 @@ def collect_kwork(max_age_hours=72):
                     'url':project_url,
                     'published':published,
                 }
-        except Exception as exc:
-            print('KWORK_WARN',query,type(exc).__name__)
     return list(merged.values())
 
 def collect_markets(max_age_hours=72):

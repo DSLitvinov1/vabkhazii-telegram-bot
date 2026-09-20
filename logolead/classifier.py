@@ -117,7 +117,7 @@ def score(text):
     if help_hit and need_hit:
         points+=25; why.append('просит помощи со специалистом')
     elif question_hit and need_hit:
-        points+=20; why.append('вопрос о речевой проблеме')
+        points+=25; why.append('вопрос о речевой проблеме')
     if ambiguous_hit and not direct_hit and personal_hit:
         points+=10; why.append('есть контекст ребенка')
     if meta['mode'] or meta['city']:

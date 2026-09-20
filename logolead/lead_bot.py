@@ -18,7 +18,7 @@ BOT_TOKEN=os.environ.get('LEADS_BOT_TOKEN','')
 CHAT_ID=os.environ.get('LEADS_CHAT_ID','')
 
 STATE_VERSION=3
-CLASSIFIER_VERSION=4
+CLASSIFIER_VERSION=5
 STATE_DIR=Path('.lead_state')
 STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
