@@ -1,25 +1,28 @@
-import asyncio, hashlib, html, json, os, re, urllib.parse, urllib.request
+import asyncio, hashlib, json, os, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
 from telethon.tl.functions.contacts import SearchRequest
-from telethon.tl.types import User
-from classifier import score, norm
+from classifier import score
 from card import build
 from web_sources import collect_web
-from sources import scan_chat, merge_unique
+from sources import merge_unique
 TG_API_ID=int(os.environ.get("TG_API_ID","0")); TG_API_HASH=os.environ.get("TG_API_HASH",""); TG_SESSION=os.environ.get("TG_SESSION","")
 BOT_TOKEN=os.environ.get("LEADS_BOT_TOKEN",""); CHAT_ID=os.environ.get("LEADS_CHAT_ID","")
 STATE_VERSION=2
 STATE_DIR=Path('.lead_state'); STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get("MAX_AGE_HOURS","72")); SEARCH_LIMIT=40; MAX_LEADS_PER_RUN=int(os.environ.get("MAX_LEADS_PER_RUN","25")); MIN_SCORE=int(os.environ.get("MIN_SCORE","35"))
+RUN_INTERVAL_MINUTES=int(os.environ.get('RUN_INTERVAL_MINUTES','10'))
+WEB_INTERVAL_MINUTES=int(os.environ.get('WEB_INTERVAL_MINUTES','60'))
 ENABLE_WEB=os.environ.get('ENABLE_WEB','0').strip().lower() in {'1','true','yes','on'}
+FORCE_RUN=os.environ.get('FORCE_RUN','0').strip().lower() in {'1','true','yes','on'}
 SEARCH_QUERIES=[
  "ищу логопеда","нужен логопед ребенку","посоветуйте логопеда","логопед онлайн",
- "ребенок не говорит логопед","не выговаривает р логопед","не выговаривает л логопед",
- "запуск речи логопед","ЗРР логопед","нужен дефектолог","дисграфия логопед","дислексия логопед"]
+ "ребенок не говорит логопед","ребенок не говорит","плохо говорит ребенок","куда обратиться ребенок не говорит",
+ "не выговаривает р логопед","не выговаривает л логопед","запуск речи логопед","ЗРР логопед",
+ "нужен дефектолог","дисграфия логопед","дислексия логопед"]
 def load_state():
  STATE_DIR.mkdir(exist_ok=True)
  try:
@@ -41,6 +44,13 @@ async def main():
  if not (TG_API_ID and TG_API_HASH and TG_SESSION): raise RuntimeError('Missing Telegram user credentials')
  if not (BOT_TOKEN and CHAT_ID): raise RuntimeError('Missing Telegram bot delivery credentials')
  st=load_state(); seen=set(st.get('seen',[])); found=[]
+ now=datetime.now(timezone.utc)
+ if not FORCE_RUN and RUN_INTERVAL_MINUTES>0 and st.get('last_run'):
+  try:
+   last=datetime.fromisoformat(st['last_run'])
+   if now-last<timedelta(minutes=RUN_INTERVAL_MINUTES-1):
+    print('SKIP_INTERVAL',st['last_run']); return
+  except Exception:pass
  client=TelegramClient(StringSession(TG_SESSION),TG_API_ID,TG_API_HASH)
  await client.connect()
  if not await client.is_user_authorized(): raise RuntimeError('TG_SESSION not authorized')
@@ -75,21 +85,29 @@ async def main():
   except Exception as e: print('SCAN_WARN',getattr(chat,'title','?'),type(e).__name__)
  found=merge_unique(found)
  found=[x for x in found if x[0]>=MIN_SCORE]
- # Public web index sources are opt-in until publication-time validation is reliable.
+ # Web sources run less often than Telegram to reduce load on public sites.
+ web_due=ENABLE_WEB
+ if web_due and not FORCE_RUN and st.get('last_web_run'):
+  try:web_due=now-datetime.fromisoformat(st['last_web_run'])>=timedelta(minutes=WEB_INTERVAL_MINUTES)
+  except Exception:web_due=True
  try:
-  for item in (await asyncio.to_thread(collect_web) if ENABLE_WEB else []):
+  for item in (await asyncio.to_thread(collect_web,MAX_AGE_HOURS) if web_due else []):
    k=hashlib.sha256(item['url'].encode()).hexdigest()
    if k in seen: continue
    seen.add(k); sc,why=score(item['text'])
    if sc<MIN_SCORE: continue
-   found.append((sc,datetime.now(timezone.utc),item['text'],item['url'],why,item.get('source','Web')))
+   dt=item.get('published') or datetime.now(timezone.utc)
+   found.append((sc,dt,item['text'],item['url'],why,item.get('source','Web')))
+  if web_due:st['last_web_run']=datetime.now(timezone.utc).isoformat()
  except Exception as e: print('WEB_SCAN_WARN',type(e).__name__)
  found.sort(key=lambda x:(x[0],x[1]),reverse=True)
  for sc,dt,msg,url,why,source in found[:MAX_LEADS_PER_RUN]:
-  published=dt.strftime('%d.%m %H:%M UTC') if source=='Telegram' else None
+  published=dt.strftime('%d.%m %H:%M UTC')
   card=build(msg,url,source,sc,why,published)
   await notify(card)
- st['seen']=list(seen)[-15000:]; save_state(st); await client.disconnect()
+ st['seen']=list(seen)[-15000:]
+ st['last_run']=datetime.now(timezone.utc).isoformat()
+ save_state(st); await client.disconnect()
  print('FOUND',len(found),'SENT',min(len(found),MAX_LEADS_PER_RUN))
 # Public-group discovery: only publicly searchable Telegram groups; no auto-join.
 DISCOVERY_QUERIES=[
