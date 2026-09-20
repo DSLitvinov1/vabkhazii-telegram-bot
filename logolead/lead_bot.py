@@ -10,12 +10,12 @@ from classifier import score
 from card import build
 from web_sources import collect_cloud_web
 from market_sources import collect_markets
-from sources import merge_unique
+from sources import merge_unique, normalize_content
 
 TG_API_ID=int(os.environ.get('TG_API_ID','0'))
 TG_API_HASH=os.environ.get('TG_API_HASH','')
 TG_SESSION=os.environ.get('TG_SESSION','')
-BOT_TOKEN=os.environ.get('LEADS_BOT_TOKEN','')
+BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN') or os.environ.get('LEADS_BOT_TOKEN','')
 CHAT_ID=(os.environ.get('LOGOLEAD_CHAT_ID') if 'LOGOLEAD_CHAT_ID' in os.environ else os.environ.get('LEADS_CHAT_ID',''))
 
 STATE_VERSION=4
@@ -118,17 +118,43 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(state,ensure_ascii=False,indent=2),'utf-8')
 
 def message_key(chat_id,msg_id):
-    return hashlib.sha256(f'{chat_id}:{msg_id}'.encode()).hexdigest()
+    chat_ref=str(chat_id).strip().lstrip('@').lower()
+    return hashlib.sha256(f'{chat_ref}:{msg_id}'.encode()).hexdigest()
 
 def delivery_key(url,text):
-    basis=('url:'+url.strip()) if url else ('text:'+' '.join((text or '').lower().split())[:1200])
+    normalized=normalize_content(text)
+    if len(normalized)>=100:
+        basis='text:'+normalized[:1200]
+    elif url:
+        basis='url:'+url.strip()
+    else:
+        basis='text:'+normalized[:1200]
     return hashlib.sha256(basis.encode()).hexdigest()
 
 
-def format_published(dt):
+def freshness_text(dt,now=None):
+    now=now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now=now.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        dt=dt.replace(tzinfo=timezone.utc)
+    seconds=max(0,int((now-dt).total_seconds()))
+    minutes=seconds//60
+    if minutes<1:
+        return 'только что'
+    if minutes<60:
+        return f'{minutes} мин назад'
+    hours=minutes//60
+    if hours<24:
+        return f'{hours} ч назад'
+    days=hours//24
+    return f'{days} дн назад'
+
+
+def format_published(dt,now=None):
     local=dt.astimezone(timezone(timedelta(hours=DISPLAY_TZ_OFFSET)))
     suffix='МСК' if DISPLAY_TZ_OFFSET==3 else f'UTC{DISPLAY_TZ_OFFSET:+d}'
-    return local.strftime('%d.%m %H:%M ') + suffix
+    return local.strftime('%d.%m %H:%M ') + suffix + ' · ' + freshness_text(dt,now)
 
 
 def chat_allowed(chat):
@@ -142,6 +168,14 @@ def chat_allowed(chat):
     if username.lower() in EXCLUDED_CHAT_USERNAMES:
         return False
     return True
+
+
+async def sender_allowed(message):
+    try:
+        sender=await message.get_sender()
+    except Exception:
+        return True
+    return not (isinstance(sender,User) and getattr(sender,'bot',False))
 
 
 def pending_to_candidate(item,cutoff,sent_keys):
@@ -331,7 +365,7 @@ async def main():
                 username=getattr(chat,'username',None)
                 title=getattr(chat,'title',None) or username or 'public'
                 chat_id=getattr(chat,'id',0)
-                key=message_key(chat_id,message.id)
+                key=message_key(username or chat_id,message.id)
                 if key in seen:
                     continue
                 seen[key]=None
@@ -348,6 +382,9 @@ async def main():
                 if value<MIN_SCORE:
                     reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                     reject_counts[reason]=reject_counts.get(reason,0)+1
+                    continue
+                if not await sender_allowed(message):
+                    reject_counts['сообщение бота']=reject_counts.get('сообщение бота',0)+1
                     continue
                 url=f'https://t.me/{username}/{message.id}' if username else ''
                 sent_key=delivery_key(url,message.message)
@@ -415,6 +452,9 @@ async def main():
                     reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                     reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
+                if not await sender_allowed(message):
+                    reject_counts['сообщение бота']=reject_counts.get('сообщение бота',0)+1
+                    continue
                 url=f'https://t.me/{username}/{message.id}'
                 sent_key=delivery_key(url,message.message)
                 if sent_key in sent_keys:
@@ -471,6 +511,9 @@ async def main():
                     reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                     reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
+                if not await sender_allowed(message):
+                    reject_counts['сообщение бота']=reject_counts.get('сообщение бота',0)+1
+                    continue
                 url=f'https://t.me/{username}/{message.id}'
                 sent_key=delivery_key(url,message.message)
                 if sent_key in sent_keys:
@@ -524,6 +567,9 @@ async def main():
                         if value<MIN_SCORE:
                             reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                             reject_counts[reason]=reject_counts.get(reason,0)+1
+                            continue
+                        if not await sender_allowed(message):
+                            reject_counts['сообщение бота']=reject_counts.get('сообщение бота',0)+1
                             continue
                         url=f'https://t.me/{username}/{message.id}'
                         sent_key=delivery_key(url,message.message)

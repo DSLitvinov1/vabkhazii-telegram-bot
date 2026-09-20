@@ -36,9 +36,17 @@ assert state['groups']=={'abc':'ABC'}
 assert state['group_last_ids']=={'abc':123}
 
 assert lead_bot.message_key(123,456)==lead_bot.message_key(123,456)
+assert lead_bot.message_key('ParentsChat',456)==lead_bot.message_key('@parentschat',456)
 assert lead_bot.message_key(123,456)!=lead_bot.message_key(123,457)
 assert lead_bot.delivery_key('https://t.me/a/1','one')==lead_bot.delivery_key('https://t.me/a/1','two')
 assert lead_bot.delivery_key('','  Same   Text ')==lead_bot.delivery_key('','same text')
-from datetime import datetime,timezone
-assert lead_bot.format_published(datetime(2026,9,20,18,0,tzinfo=timezone.utc)).endswith('21:00 МСК')
+long_text='Ищу хорошего логопеда для ребёнка пяти лет. Не выговаривает несколько звуков и хотелось бы начать занятия в ближайшее время.'
+assert lead_bot.delivery_key('https://t.me/a/2',long_text)==lead_bot.delivery_key('https://t.me/b/3',long_text)
+assert lead_bot.delivery_key('https://t.me/a/2','short')!=lead_bot.delivery_key('https://t.me/b/3','short')
+from datetime import datetime,timedelta,timezone
+published=datetime(2026,9,20,18,0,tzinfo=timezone.utc)
+now=published+timedelta(minutes=37)
+assert lead_bot.format_published(published,now)=='20.09 21:00 МСК · 37 мин назад'
+assert lead_bot.freshness_text(published,published+timedelta(hours=2,minutes=5))=='2 ч назад'
+assert lead_bot.freshness_text(published,published+timedelta(days=2,hours=1))=='2 дн назад'
 print('STATE_TEST_OK')
