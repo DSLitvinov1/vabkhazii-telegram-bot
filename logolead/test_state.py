@@ -16,10 +16,12 @@ def use_state(payload):
   lead_bot.STATE_DIR,lead_bot.STATE_FILE=old_dir,old_file
   tmp.cleanup()
 
-state,saved=use_state({'version':2,'classifier_version':1,'seen':['a','b'],'sent':['sent1'],'group_last_ids':{'x':10}})
+state,saved=use_state({'version':2,'classifier_version':1,'seen':['a','b'],'sent':['sent1'],'pending':[{'text':'lead'}],'group_last_ids':{'x':10},'last_run':'2026-09-20T10:00:00+00:00','last_market_run':'2026-09-20T10:00:00+00:00'})
 assert state['seen']==[]
 assert state['group_last_ids']=={}
 assert state['sent']==['sent1']
+assert state['pending']==[{'text':'lead'}]
+assert 'last_run' not in state and 'last_market_run' not in state
 assert state['classifier_version']==lead_bot.CLASSIFIER_VERSION
 assert saved['version']==lead_bot.STATE_VERSION
 
@@ -37,4 +39,6 @@ assert lead_bot.message_key(123,456)==lead_bot.message_key(123,456)
 assert lead_bot.message_key(123,456)!=lead_bot.message_key(123,457)
 assert lead_bot.delivery_key('https://t.me/a/1','one')==lead_bot.delivery_key('https://t.me/a/1','two')
 assert lead_bot.delivery_key('','  Same   Text ')==lead_bot.delivery_key('','same text')
+from datetime import datetime,timezone
+assert lead_bot.format_published(datetime(2026,9,20,18,0,tzinfo=timezone.utc)).endswith('21:00 МСК')
 print('STATE_TEST_OK')

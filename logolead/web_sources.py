@@ -4,6 +4,11 @@ from datetime import datetime, timedelta, timezone
 UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) LogoLead/1.0'
 BABYBLOG_BASE='https://www.babyblog.ru'
 UMAMA_BASE='https://u-mama.ru'
+WOMAN_BASE='https://www.woman.ru'
+WOMAN_FORUM='/forum/?sort=new'
+WOMAN_STRONG_TERMS=('логопед','дефектолог','нейрологопед','зрр','зпрр','дисграф','дислекс','задержка речи','запуск речи')
+WOMAN_SPEECH_TERMS=('речь','говорит','разговаривает','выговаривает','произносит','картавит','шепеляв','заика','не говорит','не разговаривает')
+WOMAN_CHILD_TERMS=('ребенок','ребёнок','ребенку','ребёнку','дочь','дочка','сын','сыну','малыш','малышка','дети','ребята')
 UMAMA_INDEXES=('/forum/last/','/forum/kids/1-3/','/forum/kids/3-7/','/forum/kids/special-child/','/forum/kids/child-health/')
 UMAMA_CATEGORIES=('/forum/kids/1-3/','/forum/kids/3-7/','/forum/kids/schoolboy/','/forum/kids/special-child/','/forum/kids/child-health/')
 BABYBLOG_FEEDS=[
@@ -103,14 +108,80 @@ def collect_umama(max_age_hours=72, max_topics=30):
         if len(text)>=8:out.append({'source':'U-mama','text':text[:2200],'url':url,'published':dt})
     return out
 
+def woman_title_relevant(title):
+    low=(title or '').lower()
+    strong=any(term in low for term in WOMAN_STRONG_TERMS)
+    speech_child=any(term in low for term in WOMAN_SPEECH_TERMS) and any(term in low for term in WOMAN_CHILD_TERMS)
+    return strong or speech_child
+
+
+def woman_thread_datetime(page):
+    match=re.search(r'"datePublished"\s*:\s*"([^"]+)"',page or '',re.I)
+    if match:
+        value=match.group(1)
+        try:
+            return datetime.strptime(value,'%Y-%m-%dT%H:%M:%S%z').astimezone(timezone.utc)
+        except Exception:
+            dt=parse_dt(value)
+            if dt:return dt.astimezone(timezone.utc)
+    match=re.search(r'publicationDate\\":\{\\"timestamp\\":(\d+)',page or '',re.I)
+    if match:
+        return datetime.fromtimestamp(int(match.group(1)),timezone.utc)
+    return None
+
+def collect_woman(max_age_hours=72,max_threads=80,max_fetch=15):
+    cutoff=datetime.now(timezone.utc)-timedelta(hours=max_age_hours)
+    try:
+        index=fetch_text(WOMAN_BASE+WOMAN_FORUM,1_000_000)
+    except Exception as exc:
+        print('WOMAN_INDEX_WARN',type(exc).__name__)
+        return []
+    link_re=re.compile(r'<a[^>]+href=["\'](?P<href>(?:https://www\.woman\.ru)?/[^"\']*thread-[^"\']+)["\'][^>]*>(?P<label>.*?)</a>',re.S|re.I)
+    topics=[];seen=set()
+    for match in link_re.finditer(index):
+        href=html.unescape(match.group('href'))
+        if href.startswith('http'):
+            path=urllib.parse.urlsplit(href).path
+        else:
+            path=href
+        url=WOMAN_BASE+path
+        if url in seen:continue
+        title=clean_fragment(match.group('label'))
+        if not title:continue
+        seen.add(url)
+        if woman_title_relevant(title):
+            topics.append((url,title))
+        if len(seen)>=max_threads:break
+    out=[]
+    for url,title in topics[:max_fetch]:
+        try:
+            page=fetch_text(url,800_000)
+        except Exception as exc:
+            print('WOMAN_TOPIC_WARN',type(exc).__name__)
+            continue
+        published=woman_thread_datetime(page)
+        if not published or published<cutoff:continue
+        desc=meta_description(page)
+        text=' '.join((title+' '+desc).split())
+        if len(text)>=8:
+            out.append({'source':'Woman.ru','text':text[:2200],'url':url,'published':published})
+    return out
+
+def collect_cloud_web(max_age_hours=72):
+    return collect_woman(max_age_hours=max_age_hours)
+
 def collect_web(max_age_hours=72):
     merged={}
-    for item in collect_babyblog(max_age_hours=max_age_hours)+collect_umama(max_age_hours=max_age_hours):
+    for item in (
+        collect_babyblog(max_age_hours=max_age_hours)
+        +collect_umama(max_age_hours=max_age_hours)
+        +collect_woman(max_age_hours=max_age_hours)
+    ):
         merged[item['url']]=item
     return list(merged.values())
 
 if __name__=='__main__':
-    xs=collect_web(72)
+    xs=collect_cloud_web(72)
     print('WEB_ITEMS',len(xs))
     for x in xs[:30]:
         print(x['published'].isoformat(),x['source'],x['url'],x['text'][:120].encode('unicode_escape').decode())

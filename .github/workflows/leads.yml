@@ -52,8 +52,12 @@ jobs:
           python test_classifier.py
           python test_web.py
           python test_market.py
+          python test_notify.py
+          python test_config.py
+          python test_pending.py
           python test_state.py
           python test_sources.py
+          python test_workflow.py
           python test_full.py
 
       - name: Run LogoLead
@@ -63,10 +67,12 @@ jobs:
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
-          LEADS_CHAT_ID: "@logopedutkina"
+          LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
           MIN_SCORE: "50"
           MAX_AGE_HOURS: "72"
-          MAX_LEADS_PER_RUN: "0"
+          MAX_LEADS_PER_RUN: "12"
+          PENDING_LIMIT: "500"
+          DELIVERY_ENABLED: "0"
           RUN_INTERVAL_MINUTES: "10"
           FORCE_RUN: ${{ inputs.force_logolead || '0' }}
           DISCOVERY_INTERVAL_MINUTES: "360"
@@ -74,15 +80,20 @@ jobs:
           GROUP_CACHE_LIMIT: "120"
           GROUP_SCAN_LIMIT: "80"
           INITIAL_GROUP_SCAN_LIMIT: "180"
+          BACKFILL_GROUPS_PER_RUN: "1"
+          BACKFILL_SCAN_LIMIT: "120"
           DEEP_GROUP_INTERVAL_MINUTES: "180"
           DEEP_GROUP_SCAN_COUNT: "6"
           DEEP_GROUP_SEARCH_LIMIT: "15"
           ENABLE_MARKETS: "1"
           MARKET_INTERVAL_MINUTES: "30"
-          ENABLE_WEB: "0"
+          ENABLE_WEB: "1"
           WEB_INTERVAL_MINUTES: "60"
           SEND_STATUS: "0"
           STATUS_INTERVAL_HOURS: "24"
+          BOT_SEND_RETRIES: "2"
+          BOT_RETRY_MAX_SECONDS: "30"
+          DISPLAY_TZ_OFFSET: "3"
         run: python lead_bot.py
 
       - name: Check VAbkhazii lead bot syntax

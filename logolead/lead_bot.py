@@ -1,4 +1,4 @@
-import asyncio, hashlib, json, os, urllib.parse, urllib.request
+import asyncio, hashlib, json, os, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from telethon import TelegramClient
@@ -7,7 +7,7 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.contacts import SearchRequest
 from classifier import score
 from card import build
-from web_sources import collect_web
+from web_sources import collect_cloud_web
 from market_sources import collect_markets
 from sources import merge_unique
 
@@ -15,20 +15,23 @@ TG_API_ID=int(os.environ.get('TG_API_ID','0'))
 TG_API_HASH=os.environ.get('TG_API_HASH','')
 TG_SESSION=os.environ.get('TG_SESSION','')
 BOT_TOKEN=os.environ.get('LEADS_BOT_TOKEN','')
-CHAT_ID=os.environ.get('LEADS_CHAT_ID','')
+CHAT_ID=(os.environ.get('LOGOLEAD_CHAT_ID') if 'LOGOLEAD_CHAT_ID' in os.environ else os.environ.get('LEADS_CHAT_ID',''))
 
-STATE_VERSION=3
-CLASSIFIER_VERSION=5
+STATE_VERSION=4
+CLASSIFIER_VERSION=6
 STATE_DIR=Path('.lead_state')
 STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
 SEARCH_LIMIT=int(os.environ.get('SEARCH_LIMIT','40'))
 MAX_LEADS_PER_RUN=int(os.environ.get('MAX_LEADS_PER_RUN','25'))
+PENDING_LIMIT=int(os.environ.get('PENDING_LIMIT','500'))
 MIN_SCORE=int(os.environ.get('MIN_SCORE','35'))
 RUN_INTERVAL_MINUTES=int(os.environ.get('RUN_INTERVAL_MINUTES','10'))
 DISCOVERY_INTERVAL_MINUTES=int(os.environ.get('DISCOVERY_INTERVAL_MINUTES','360'))
 GROUP_SCAN_LIMIT=int(os.environ.get('GROUP_SCAN_LIMIT','80'))
 INITIAL_GROUP_SCAN_LIMIT=int(os.environ.get('INITIAL_GROUP_SCAN_LIMIT','180'))
+BACKFILL_GROUPS_PER_RUN=int(os.environ.get('BACKFILL_GROUPS_PER_RUN','1'))
+BACKFILL_SCAN_LIMIT=int(os.environ.get('BACKFILL_SCAN_LIMIT','120'))
 MAX_DISCOVERED_GROUPS=int(os.environ.get('MAX_DISCOVERED_GROUPS','30'))
 GROUP_CACHE_LIMIT=int(os.environ.get('GROUP_CACHE_LIMIT','120'))
 DEEP_GROUP_INTERVAL_MINUTES=int(os.environ.get('DEEP_GROUP_INTERVAL_MINUTES','180'))
@@ -38,9 +41,13 @@ WEB_INTERVAL_MINUTES=int(os.environ.get('WEB_INTERVAL_MINUTES','60'))
 MARKET_INTERVAL_MINUTES=int(os.environ.get('MARKET_INTERVAL_MINUTES','30'))
 ENABLE_WEB=os.environ.get('ENABLE_WEB','0').strip().lower() in {'1','true','yes','on'}
 ENABLE_MARKETS=os.environ.get('ENABLE_MARKETS','1').strip().lower() in {'1','true','yes','on'}
+DELIVERY_ENABLED=os.environ.get('DELIVERY_ENABLED','1').strip().lower() in {'1','true','yes','on'}
 FORCE_RUN=os.environ.get('FORCE_RUN','0').strip().lower() in {'1','true','yes','on'}
 SEND_STATUS=os.environ.get('SEND_STATUS','0').strip().lower() in {'1','true','yes','on'}
 STATUS_INTERVAL_HOURS=int(os.environ.get('STATUS_INTERVAL_HOURS','24'))
+BOT_SEND_RETRIES=int(os.environ.get('BOT_SEND_RETRIES','2'))
+BOT_RETRY_MAX_SECONDS=int(os.environ.get('BOT_RETRY_MAX_SECONDS','30'))
+DISPLAY_TZ_OFFSET=int(os.environ.get('DISPLAY_TZ_OFFSET','3'))
 BUILD_SHA=os.environ.get('GITHUB_SHA','local')[:7]
 
 SEARCH_QUERIES=[
@@ -55,6 +62,9 @@ SEARCH_QUERIES=[
     'плохо говорит ребенок','плохо говорит ребёнок','не выговаривает р',
     'не выговаривает л','не выговаривает звуки','запуск речи','ЗРР логопед',
     'ЗПРР логопед','дисграфия логопед','дислексия логопед',
+    'сколько стоит логопед','стоимость логопеда','ребенок шепелявит','ребёнок шепелявит',
+    'ребенок заикается','ребёнок заикается','говорит невнятно ребенок','говорит невнятно ребёнок',
+    'путает буквы ребенок','путает буквы ребёнок','задержка речи ребенок','задержка речи ребёнок',
     'логопед','дефектолог','нейрологопед',
 ]
 DISCOVERY_QUERIES=[
@@ -69,7 +79,7 @@ DISCOVERY_QUERIES=[
     'мамы тюмень чат','мамы челябинск чат','мамы нижний новгород чат','мамы омск чат',
     'мамы волгоград чат','мамы минск чат','мамы алматы чат','мамы астана чат',
 ]
-DEEP_GROUP_QUERIES=['логопед','дефектолог','нейрологопед','не говорит','не выговаривает','зрр','зпрр','картавит','шепелявит','заикается','задержка речи','запуск речи','дисграфия']
+DEEP_GROUP_QUERIES=['логопед','дефектолог','нейрологопед','не говорит','не выговаривает','зрр','зпрр','картавит','шепелявит','заикается','задержка речи','запуск речи','дисграфия','говорит невнятно','мало слов','путает буквы','ошибки на письме']
 COMMERCIAL_CHAT_MARKERS=[
     'услуги логопеда','логопедический центр','школа логопеда',
     'курсы логопедов','вакансии логопед','обучение логопедов',
@@ -84,12 +94,17 @@ def load_state():
         state={}
     state.setdefault('seen',[])
     state.setdefault('sent',[])
+    state.setdefault('pending',[])
     state.setdefault('groups',{})
     state.setdefault('group_last_ids',{})
+    state.setdefault('group_backfill_ids',{})
     if state.get('classifier_version')!=CLASSIFIER_VERSION:
         state['seen']=[]
         state['group_last_ids']={}
+        state['group_backfill_ids']={}
         state['classifier_version']=CLASSIFIER_VERSION
+        for name in ('last_run','last_deep_scan','last_market_run','last_web_run'):
+            state.pop(name,None)
     state['version']=STATE_VERSION
     return state
 
@@ -104,6 +119,43 @@ def delivery_key(url,text):
     basis=('url:'+url.strip()) if url else ('text:'+' '.join((text or '').lower().split())[:1200])
     return hashlib.sha256(basis.encode()).hexdigest()
 
+
+def format_published(dt):
+    local=dt.astimezone(timezone(timedelta(hours=DISPLAY_TZ_OFFSET)))
+    suffix='МСК' if DISPLAY_TZ_OFFSET==3 else f'UTC{DISPLAY_TZ_OFFSET:+d}'
+    return local.strftime('%d.%m %H:%M ') + suffix
+
+def pending_to_candidate(item,cutoff,sent_keys):
+    try:
+        published=datetime.fromisoformat(item.get('published',''))
+        if published.tzinfo is None:
+            published=published.replace(tzinfo=timezone.utc)
+        if published<cutoff:
+            return None
+        text=item.get('text') or ''
+        url=item.get('url') or ''
+        source=item.get('source') or 'Pending'
+        value,reasons=score(text)
+        if value<MIN_SCORE:
+            return None
+        sent_key=delivery_key(url,text)
+        if sent_key in sent_keys:
+            return None
+        return (value,published,text,url,reasons,source,'pending:'+sent_key,sent_key)
+    except Exception:
+        return None
+
+def candidate_to_pending(item):
+    value,published,text,url,reasons,source,seen_key,sent_key=item
+    return {
+        'published':published.isoformat(),
+        'text':text[:2000],
+        'url':url,
+        'source':source,
+        'score':value,
+        'sent_key':sent_key,
+    }
+
 async def notify(text):
     if not BOT_TOKEN or not CHAT_ID:
         print('DRY_SEND',text.encode('ascii','backslashreplace').decode()[:400])
@@ -113,10 +165,38 @@ async def notify(text):
         'text':text,
         'disable_web_page_preview':'true',
     }).encode()
-    req=urllib.request.Request(f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage',data=data)
+    url=f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
+
     def send():
-        with urllib.request.urlopen(req,timeout=20) as response:
-            response.read(2000)
+        last_error=None
+        for attempt in range(BOT_SEND_RETRIES+1):
+            req=urllib.request.Request(url,data=data)
+            try:
+                with urllib.request.urlopen(req,timeout=20) as response:
+                    response.read(2000)
+                    return
+            except urllib.error.HTTPError as exc:
+                last_error=exc
+                if attempt>=BOT_SEND_RETRIES:
+                    raise
+                wait=2
+                if exc.code==429:
+                    try:
+                        payload=json.loads(exc.read().decode('utf-8','ignore'))
+                        wait=int(((payload.get('parameters') or {}).get('retry_after')) or 2)
+                    except Exception:
+                        wait=2
+                elif exc.code<500:
+                    raise
+                time.sleep(max(1,min(BOT_RETRY_MAX_SECONDS,wait)))
+            except Exception as exc:
+                last_error=exc
+                if attempt>=BOT_SEND_RETRIES:
+                    raise
+                time.sleep(min(BOT_RETRY_MAX_SECONDS,2*(attempt+1)))
+        if last_error:
+            raise last_error
+
     await asyncio.to_thread(send)
 
 async def discover_public_groups(client,state,now):
@@ -164,18 +244,22 @@ async def discover_public_groups(client,state,now):
     print('DISCOVERED_GROUPS',len(state.get('groups') or {}))
     return state.get('groups') or {}
 
-async def main():
+def validate_config():
     if not (TG_API_ID and TG_API_HASH and TG_SESSION):
         raise RuntimeError('Missing Telegram user credentials')
-    if not (BOT_TOKEN and CHAT_ID):
+    if (DELIVERY_ENABLED or SEND_STATUS) and not (BOT_TOKEN and CHAT_ID):
         raise RuntimeError('Missing Telegram bot delivery credentials')
+    return True
+
+async def main():
+    validate_config()
 
     state=load_state()
     seen=dict.fromkeys(state.get('seen',[]))
     sent_keys=dict.fromkeys(state.get('sent',[]))
     found=[]
     seed_groups={}
-    stats={'global_checked':0,'global_candidates':0,'group_checked':0,'group_candidates':0,'deep_checked':0,'deep_candidates':0,'market_checked':0,'market_candidates':0,'web_checked':0,'web_candidates':0}
+    stats={'global_checked':0,'global_candidates':0,'group_checked':0,'group_candidates':0,'backfill_checked':0,'backfill_candidates':0,'deep_checked':0,'deep_candidates':0,'market_checked':0,'market_candidates':0,'web_checked':0,'web_candidates':0}
     reject_counts={}
     query_hits={}
     score_hist={}
@@ -203,6 +287,14 @@ async def main():
         raise RuntimeError('TG_SESSION not authorized')
 
     cutoff=now-timedelta(hours=MAX_AGE_HOURS)
+    restored_pending=[]
+    for item in state.get('pending',[]):
+        candidate=pending_to_candidate(item,cutoff,sent_keys)
+        if candidate is not None:
+            restored_pending.append(candidate)
+    if restored_pending:
+        print('PENDING_RESTORED',len(restored_pending))
+    found.extend(restored_pending)
 
     for query in SEARCH_QUERIES:
         try:
@@ -255,6 +347,7 @@ async def main():
     print('GLOBAL_STATS',stats['global_checked'],stats['global_candidates'],'SEED_GROUPS',len(seed_groups))
     groups=await discover_public_groups(client,state,now)
     group_last_ids=state.get('group_last_ids') or {}
+    group_backfill_ids=state.get('group_backfill_ids') or {}
 
     all_groups=list(groups.items())
     priority=[item for item in all_groups if item[0] in seed_groups]
@@ -273,13 +366,19 @@ async def main():
     for username,title in selected_groups:
         min_id=int(group_last_ids.get(username,0) or 0)
         newest_id=min_id
+        oldest_id=None
+        iterated=0
+        hit_cutoff=False
         try:
             scan_limit=INITIAL_GROUP_SCAN_LIMIT if min_id==0 else GROUP_SCAN_LIMIT
             async for message in client.iter_messages(username,limit=scan_limit,min_id=min_id):
+                iterated+=1
                 newest_id=max(newest_id,message.id)
+                oldest_id=message.id if oldest_id is None else min(oldest_id,message.id)
                 if not message.message or not message.date:
                     continue
                 if message.date<cutoff:
+                    hit_cutoff=True
                     break
                 stats['group_checked']+=1
                 key=message_key(username,message.id)
@@ -300,6 +399,11 @@ async def main():
                 found.append((value,message.date,message.message,url,reasons,f'Telegram: {title or username}',key,sent_key))
             if newest_id>min_id:
                 group_last_ids[username]=newest_id
+            if min_id==0:
+                if hit_cutoff or iterated<scan_limit or oldest_id is None:
+                    group_backfill_ids.pop(username,None)
+                else:
+                    group_backfill_ids[username]=oldest_id
         except FloodWaitError as exc:
             if exc.seconds<=60:
                 await asyncio.sleep(exc.seconds+1)
@@ -310,6 +414,58 @@ async def main():
             print('SCAN_WARN',username,type(exc).__name__)
 
     state['group_last_ids']=group_last_ids
+
+    backfill_items=list(group_backfill_ids.items())[:BACKFILL_GROUPS_PER_RUN]
+    if backfill_items:
+        print('BACKFILL_SET',len(backfill_items),'PENDING',len(group_backfill_ids))
+    for username,offset_id in backfill_items:
+        if username not in groups:
+            group_backfill_ids.pop(username,None)
+            continue
+        title=groups.get(username) or username
+        start_id=int(offset_id or 0)
+        oldest_id=start_id
+        iterated=0
+        hit_cutoff=False
+        try:
+            async for message in client.iter_messages(username,limit=BACKFILL_SCAN_LIMIT,offset_id=start_id):
+                iterated+=1
+                oldest_id=min(oldest_id,message.id)
+                if not message.message or not message.date:
+                    continue
+                if message.date<cutoff:
+                    hit_cutoff=True
+                    break
+                stats['backfill_checked']+=1
+                key=message_key(username,message.id)
+                if key in seen:
+                    continue
+                seen[key]=None
+                value,reasons=score(message.message)
+                record_score(value,reasons)
+                if value<MIN_SCORE:
+                    reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
+                    reject_counts[reason]=reject_counts.get(reason,0)+1
+                    continue
+                url=f'https://t.me/{username}/{message.id}'
+                sent_key=delivery_key(url,message.message)
+                if sent_key in sent_keys:
+                    continue
+                stats['backfill_candidates']+=1
+                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title}',key,sent_key))
+            if hit_cutoff or iterated<BACKFILL_SCAN_LIMIT or oldest_id>=start_id:
+                group_backfill_ids.pop(username,None)
+            else:
+                group_backfill_ids[username]=oldest_id
+        except FloodWaitError as exc:
+            if exc.seconds<=60:
+                await asyncio.sleep(exc.seconds+1)
+            else:
+                print('BACKFILL_FLOOD_WAIT',username,exc.seconds)
+                break
+        except Exception as exc:
+            print('BACKFILL_WARN',username,type(exc).__name__)
+    state['group_backfill_ids']=group_backfill_ids
 
     deep_due=FORCE_RUN or not state.get('last_deep_scan')
     if not FORCE_RUN and state.get('last_deep_scan'):
@@ -405,7 +561,7 @@ async def main():
             web_due=True
 
     try:
-        web_items=await asyncio.to_thread(collect_web,MAX_AGE_HOURS) if web_due else []
+        web_items=await asyncio.to_thread(collect_cloud_web,MAX_AGE_HOURS) if web_due else []
         print('WEB_ITEMS',len(web_items))
         for item in web_items:
             stats['web_checked']+=1
@@ -430,22 +586,36 @@ async def main():
     except Exception as exc:
         print('WEB_SCAN_WARN',type(exc).__name__)
 
+    found=merge_unique(found)
+    found=[item for item in found if item[0]>=MIN_SCORE and item[7] not in sent_keys]
     found.sort(key=lambda item:(item[0],item[1]),reverse=True)
+
     sent=0
     failed=0
-    for value,published,text,url,reasons,source,seen_key,sent_key in found[:MAX_LEADS_PER_RUN]:
-        card=build(text,url,source,value,reasons,published.strftime('%d.%m %H:%M UTC'))
-        try:
-            await notify(card)
-            sent_keys[sent_key]=None
-            sent+=1
-        except Exception as exc:
-            failed+=1
-            seen.pop(seen_key,None)
-            print('SEND_WARN',source,type(exc).__name__)
+    remaining=[]
+    if DELIVERY_ENABLED:
+        batch=found[:MAX_LEADS_PER_RUN]
+        remaining.extend(found[MAX_LEADS_PER_RUN:])
+        for value,published,text,url,reasons,source,seen_key,sent_key in batch:
+            card=build(text,url,source,value,reasons,format_published(published))
+            try:
+                await notify(card)
+                sent_keys[sent_key]=None
+                sent+=1
+            except Exception as exc:
+                failed+=1
+                remaining.append((value,published,text,url,reasons,source,seen_key,sent_key))
+                print('SEND_WARN',source,type(exc).__name__)
+    else:
+        remaining=list(found)
+        print('DELIVERY_PAUSED','PENDING',len(remaining))
 
-    status_due=SEND_STATUS and not state.get('last_status')
-    if SEND_STATUS and state.get('last_status'):
+    remaining=merge_unique([item for item in remaining if item[7] not in sent_keys])
+    remaining.sort(key=lambda item:(item[0],item[1]),reverse=True)
+    state['pending']=[candidate_to_pending(item) for item in remaining[:PENDING_LIMIT]]
+
+    status_due=DELIVERY_ENABLED and SEND_STATUS and not state.get('last_status')
+    if DELIVERY_ENABLED and SEND_STATUS and state.get('last_status'):
         try:
             status_due=datetime.now(timezone.utc)-datetime.fromisoformat(state['last_status'])>=timedelta(hours=STATUS_INTERVAL_HOURS)
         except Exception:
@@ -453,9 +623,9 @@ async def main():
     if status_due:
         summary=(
             f'✅ LogoLead работает\nВерсия: {BUILD_SHA}\n'
-            f'Проверено: Telegram global {stats["global_checked"]}, группы {stats["group_checked"]}, глубокий поиск {stats["deep_checked"]}, площадки {stats["market_checked"]}\n'
+            f'Проверено: Telegram global {stats["global_checked"]}, группы {stats["group_checked"]}, история {stats["backfill_checked"]}, глубокий поиск {stats["deep_checked"]}, площадки {stats["market_checked"]}\n'
             f'Публичных групп в базе: {len(groups)}\n'
-            f'Новых подходящих лидов: {len(found)}, отправлено: {sent}'
+            f'Подходящих лидов в очереди: {len(found)}, отправлено: {sent}, ожидают: {len(state["pending"])}'
         )
         try:
             await notify(summary)
@@ -476,7 +646,7 @@ async def main():
     print('SIGNAL_COMBOS',json.dumps(top_signals,ensure_ascii=False))
     print('QUERY_HITS',json.dumps(top_queries,ensure_ascii=False))
     print('REJECT_COUNTS',json.dumps(top_rejects,ensure_ascii=False))
-    print('FOUND',len(found),'SENT',sent,'SEND_FAILED',failed,'GROUPS',len(groups),'SEEN',len(state['seen']))
+    print('FOUND',len(found),'SENT',sent,'SEND_FAILED',failed,'PENDING',len(state['pending']),'GROUPS',len(groups),'SEEN',len(state['seen']))
 
 if __name__=='__main__':
     asyncio.run(main())
