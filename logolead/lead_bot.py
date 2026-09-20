@@ -5,6 +5,7 @@ from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
 from telethon.tl.functions.contacts import SearchRequest
+from telethon.tl.types import User
 from classifier import score
 from card import build
 from web_sources import collect_cloud_web
@@ -48,6 +49,7 @@ STATUS_INTERVAL_HOURS=int(os.environ.get('STATUS_INTERVAL_HOURS','24'))
 BOT_SEND_RETRIES=int(os.environ.get('BOT_SEND_RETRIES','2'))
 BOT_RETRY_MAX_SECONDS=int(os.environ.get('BOT_RETRY_MAX_SECONDS','30'))
 DISPLAY_TZ_OFFSET=int(os.environ.get('DISPLAY_TZ_OFFSET','3'))
+EXCLUDED_CHAT_USERNAMES={x.strip().lstrip('@').lower() for x in os.environ.get('EXCLUDED_CHAT_USERNAMES','VAbkhaziiLeadsBot').split(',') if x.strip()}
 BUILD_SHA=os.environ.get('GITHUB_SHA','local')[:7]
 
 SEARCH_QUERIES=[
@@ -98,6 +100,9 @@ def load_state():
     state.setdefault('groups',{})
     state.setdefault('group_last_ids',{})
     state.setdefault('group_backfill_ids',{})
+    state['groups']={k:v for k,v in state['groups'].items() if k.strip().lstrip('@').lower() not in EXCLUDED_CHAT_USERNAMES}
+    state['group_last_ids']={k:v for k,v in state['group_last_ids'].items() if k.strip().lstrip('@').lower() not in EXCLUDED_CHAT_USERNAMES}
+    state['group_backfill_ids']={k:v for k,v in state['group_backfill_ids'].items() if k.strip().lstrip('@').lower() not in EXCLUDED_CHAT_USERNAMES}
     if state.get('classifier_version')!=CLASSIFIER_VERSION:
         state['seen']=[]
         state['group_last_ids']={}
@@ -125,8 +130,26 @@ def format_published(dt):
     suffix='МСК' if DISPLAY_TZ_OFFSET==3 else f'UTC{DISPLAY_TZ_OFFSET:+d}'
     return local.strftime('%d.%m %H:%M ') + suffix
 
+
+def chat_allowed(chat):
+    if chat is None or isinstance(chat,User):
+        return False
+    if getattr(chat,'broadcast',False):
+        return False
+    username=(getattr(chat,'username',None) or '').strip().lstrip('@')
+    if not username:
+        return False
+    if username.lower() in EXCLUDED_CHAT_USERNAMES:
+        return False
+    return True
+
+
 def pending_to_candidate(item,cutoff,sent_keys):
     try:
+        source=item.get('source') or 'Pending'
+        source_label=source.split(':',1)[-1].strip().lstrip('@').lower() if source.lower().startswith('telegram:') else ''
+        if source_label in EXCLUDED_CHAT_USERNAMES:
+            return None
         published=datetime.fromisoformat(item.get('published',''))
         if published.tzinfo is None:
             published=published.replace(tzinfo=timezone.utc)
@@ -134,7 +157,6 @@ def pending_to_candidate(item,cutoff,sent_keys):
             return None
         text=item.get('text') or ''
         url=item.get('url') or ''
-        source=item.get('source') or 'Pending'
         value,reasons=score(text)
         if value<MIN_SCORE:
             return None
@@ -220,7 +242,7 @@ async def discover_public_groups(client,state,now):
                 title=(getattr(chat,'title','') or '').strip()
                 low=title.lower()
                 username=getattr(chat,'username',None)
-                if not username or getattr(chat,'broadcast',False):
+                if not chat_allowed(chat):
                     continue
                 if any(marker in low for marker in COMMERCIAL_CHAT_MARKERS):
                     continue
@@ -308,17 +330,19 @@ async def main():
                 query_hits[query]=query_hits.get(query,0)+1
                 username=getattr(chat,'username',None)
                 title=getattr(chat,'title',None) or username or 'public'
-                low_title=(title or '').lower()
-                if username and not getattr(chat,'broadcast',False) and not any(x in low_title for x in COMMERCIAL_CHAT_MARKERS):
-                    seed_groups[username]=title or username
                 chat_id=getattr(chat,'id',0)
                 key=message_key(chat_id,message.id)
                 if key in seen:
                     continue
                 seen[key]=None
-                if not username:
-                    reject_counts['нет публичной ссылки']=reject_counts.get('нет публичной ссылки',0)+1
+                if not chat_allowed(chat):
+                    reject_counts['не публичная группа']=reject_counts.get('не публичная группа',0)+1
                     continue
+                low_title=(title or '').lower()
+                if any(x in low_title for x in COMMERCIAL_CHAT_MARKERS):
+                    reject_counts['коммерческий чат']=reject_counts.get('коммерческий чат',0)+1
+                    continue
+                seed_groups[username]=title or username
                 value,reasons=score(message.message)
                 record_score(value,reasons)
                 if value<MIN_SCORE:
@@ -349,7 +373,7 @@ async def main():
     group_last_ids=state.get('group_last_ids') or {}
     group_backfill_ids=state.get('group_backfill_ids') or {}
 
-    all_groups=list(groups.items())
+    all_groups=[item for item in groups.items() if item[0].strip().lstrip('@').lower() not in EXCLUDED_CHAT_USERNAMES]
     priority=[item for item in all_groups if item[0] in seed_groups]
     priority_names={item[0] for item in priority}
     others=[item for item in all_groups if item[0] not in priority_names]

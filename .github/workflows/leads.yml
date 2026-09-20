@@ -54,6 +54,7 @@ jobs:
           python test_market.py
           python test_notify.py
           python test_config.py
+          python test_chat_filter.py
           python test_pending.py
           python test_state.py
           python test_sources.py

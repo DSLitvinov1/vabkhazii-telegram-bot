@@ -19,5 +19,7 @@ assert restored[7]==lead_bot.delivery_key(restored[3],restored[2])
 
 assert lead_bot.pending_to_candidate(stored,published+timedelta(seconds=1),{}) is None
 assert lead_bot.pending_to_candidate(stored,cutoff,{restored[7]:None}) is None
+excluded=dict(stored); excluded['source']='Telegram: VAbkhaziiLeadsBot'
+assert lead_bot.pending_to_candidate(excluded,cutoff,{}) is None
 
 print('PENDING_TEST_OK')
