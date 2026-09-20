@@ -23,9 +23,9 @@ HOT = [
     'кто знает хорошего логопеда','кто знает логопеда','кто-нибудь знает логопеда',
     'кто-нибудь знает хорошего логопеда','кто нибудь знает логопеда','подскажите логопеда',
     'подскажите хорошего логопеда','может кто посоветует логопеда','может кто порекомендует логопеда',
-    'ищу хорошего логопеда','нужен хороший логопед','логопед нужен','логопед ребенку','логопед ребёнку',
-    'ищу логопеда для','нужен логопед для','есть ли логопед','логопед на дом',
-    'логопед для ребенка','логопед для ребёнка','где найти логопеда','где искать логопеда',
+    'ищу хорошего логопеда','нужен хороший логопед','логопед нужен',
+    'ищу логопеда для','нужен логопед для','есть ли логопед',
+    'где найти логопеда','где искать логопеда',
     'поделитесь контактом логопеда','контакты логопеда','к какому логопеду',
     'нужен специалист по речи','порекомендуйте специалиста по речи','посоветуйте специалиста по речи',
     'ищу специалиста для ребенка','ищу специалиста для ребёнка',
@@ -33,6 +33,7 @@ HOT = [
     'порекомендуйте дефектолога','кто знает дефектолога','дефектолог нужен',
     'где найти дефектолога','нужен нейрологопед','ищу нейрологопеда','нужна консультация логопеда',
 ]
+AMBIGUOUS = ['логопед ребенку','логопед ребёнку','логопед для ребенка','логопед для ребёнка','логопед на дом','логопед онлайн']
 NEED = [
     'не говорит','не разговаривает','плохо говорит','мало говорит','не говорит фразами',
     'не строит фразы','не строит предложения','не выговаривает','не произносит',
@@ -88,20 +89,40 @@ def score(text):
     if any(x in t for x in NOISE):
         return 0, ['нерелевантное обучение/контент']
 
-    points = 0
-    if any(x in t for x in HOT):
-        points += 55; why.append('прямой поиск специалиста')
-    if any(x in t for x in NEED):
-        points += 25; why.append('описана речевая проблема')
-    if any(x in t for x in URGENT):
-        points += 10; why.append('срочность')
-    if any(x in t for x in HELP) and any(x in t for x in NEED):
-        points += 25; why.append('просит помощи со специалистом')
-    meta = extract(t)
+    direct_hit=any(x in t for x in HOT)
+    ambiguous_hit=any(x in t for x in AMBIGUOUS)
+    need_hit=any(x in t for x in NEED)
+    urgent_hit=any(x in t for x in URGENT)
+    help_hit=any(x in t for x in HELP)
+    question_hit='?' in t
+    specialist_hit=any(x in t for x in ['логопед','дефектолог','нейрологопед'])
+    meta=extract(t)
+    personal_hit=meta['age'] is not None or any(x in t for x in [
+        'моему ребенку','моему ребёнку','мой ребенок','мой ребёнок','наш ребенок','наш ребёнок',
+        'ребенку','ребёнку','сыну','сын ','дочке','дочери','дочь ',
+    ])
+
+    points=0
+    if direct_hit:
+        points+=55; why.append('прямой поиск специалиста')
+    elif ambiguous_hit:
+        points+=35; why.append('похоже на краткий запрос')
+    if need_hit:
+        points+=25; why.append('описана речевая проблема')
+    if urgent_hit:
+        points+=10; why.append('срочность')
+    if help_hit and need_hit:
+        points+=25; why.append('просит помощи со специалистом')
+    elif question_hit and need_hit:
+        points+=20; why.append('вопрос о речевой проблеме')
+    if ambiguous_hit and not direct_hit and personal_hit:
+        points+=10; why.append('есть контекст ребенка')
     if meta['mode'] or meta['city']:
-        points += 5; why.append('формат/география')
+        points+=5; why.append('формат/география')
     if meta['age'] is not None:
-        points += 5; why.append('возраст ребенка')
-    if points == 0 and ('логопед' in t or 'дефектолог' in t) and ('?' in t or 'подскажите' in t):
-        points = 25; why.append('вопрос о специалисте')
-    return min(100, points), why
+        points+=5; why.append('возраст ребенка')
+    if points==0 and specialist_hit and (question_hit or 'подскажите' in t):
+        points=25; why.append('вопрос о специалисте')
+    if ambiguous_hit and not direct_hit and not help_hit and not question_hit and not personal_hit:
+        points=min(points,45)
+    return min(100,points),why

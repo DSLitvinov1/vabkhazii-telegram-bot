@@ -17,7 +17,7 @@ BOT_TOKEN=os.environ.get('LEADS_BOT_TOKEN','')
 CHAT_ID=os.environ.get('LEADS_CHAT_ID','')
 
 STATE_VERSION=3
-CLASSIFIER_VERSION=3
+CLASSIFIER_VERSION=4
 STATE_DIR=Path('.lead_state')
 STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
@@ -29,6 +29,7 @@ DISCOVERY_INTERVAL_MINUTES=int(os.environ.get('DISCOVERY_INTERVAL_MINUTES','360'
 GROUP_SCAN_LIMIT=int(os.environ.get('GROUP_SCAN_LIMIT','80'))
 INITIAL_GROUP_SCAN_LIMIT=int(os.environ.get('INITIAL_GROUP_SCAN_LIMIT','180'))
 MAX_DISCOVERED_GROUPS=int(os.environ.get('MAX_DISCOVERED_GROUPS','30'))
+GROUP_CACHE_LIMIT=int(os.environ.get('GROUP_CACHE_LIMIT','120'))
 WEB_INTERVAL_MINUTES=int(os.environ.get('WEB_INTERVAL_MINUTES','60'))
 ENABLE_WEB=os.environ.get('ENABLE_WEB','0').strip().lower() in {'1','true','yes','on'}
 FORCE_RUN=os.environ.get('FORCE_RUN','0').strip().lower() in {'1','true','yes','on'}
@@ -69,6 +70,7 @@ def load_state():
     except Exception:
         state={}
     state.setdefault('seen',[])
+    state.setdefault('sent',[])
     state.setdefault('groups',{})
     state.setdefault('group_last_ids',{})
     if state.get('classifier_version')!=CLASSIFIER_VERSION:
@@ -84,6 +86,10 @@ def save_state(state):
 
 def message_key(chat_id,msg_id):
     return hashlib.sha256(f'{chat_id}:{msg_id}'.encode()).hexdigest()
+
+def delivery_key(url,text):
+    basis=('url:'+url.strip()) if url else ('text:'+' '.join((text or '').lower().split())[:1200])
+    return hashlib.sha256(basis.encode()).hexdigest()
 
 async def notify(text):
     if not BOT_TOKEN or not CHAT_ID:
@@ -112,7 +118,8 @@ async def discover_public_groups(client,state,now):
         print('DISCOVERY_CACHE',len(cached))
         return cached
 
-    groups={}
+    keep=max(0,GROUP_CACHE_LIMIT-40)
+    groups=dict(list(cached.items())[:keep])
     for query in DISCOVERY_QUERIES:
         try:
             result=await client(SearchRequest(q=query,limit=20))
@@ -125,7 +132,7 @@ async def discover_public_groups(client,state,now):
                 if any(marker in low for marker in COMMERCIAL_CHAT_MARKERS):
                     continue
                 groups[username]=title or username
-                if len(groups)>=MAX_DISCOVERED_GROUPS:
+                if len(groups)>=GROUP_CACHE_LIMIT:
                     break
         except FloodWaitError as exc:
             if exc.seconds<=60:
@@ -135,7 +142,7 @@ async def discover_public_groups(client,state,now):
                 break
         except Exception as exc:
             print('DISCOVERY_WARN',query,type(exc).__name__)
-        if len(groups)>=MAX_DISCOVERED_GROUPS:
+        if len(groups)>=GROUP_CACHE_LIMIT:
             break
 
     if groups:
@@ -152,12 +159,21 @@ async def main():
 
     state=load_state()
     seen=dict.fromkeys(state.get('seen',[]))
+    sent_keys=dict.fromkeys(state.get('sent',[]))
     found=[]
     seed_groups={}
     stats={'global_checked':0,'global_candidates':0,'group_checked':0,'group_candidates':0,'web_checked':0,'web_candidates':0}
     reject_counts={}
     query_hits={}
+    score_hist={}
+    signal_combos={}
     now=datetime.now(timezone.utc)
+
+    def record_score(value,reasons):
+        key=str(value)
+        score_hist[key]=score_hist.get(key,0)+1
+        combo=' + '.join(reasons) if reasons else 'нет сигналов'
+        signal_combos[combo]=signal_combos.get(combo,0)+1
 
     if not FORCE_RUN and RUN_INTERVAL_MINUTES>0 and state.get('last_run'):
         try:
@@ -199,13 +215,17 @@ async def main():
                     reject_counts['нет публичной ссылки']=reject_counts.get('нет публичной ссылки',0)+1
                     continue
                 value,reasons=score(message.message)
+                record_score(value,reasons)
                 if value<MIN_SCORE:
                     reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                     reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
-                stats['global_candidates']+=1
                 url=f'https://t.me/{username}/{message.id}' if username else ''
-                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title}',key))
+                sent_key=delivery_key(url,message.message)
+                if sent_key in sent_keys:
+                    continue
+                stats['global_candidates']+=1
+                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title}',key,sent_key))
         except FloodWaitError as exc:
             if exc.seconds<=60:
                 await asyncio.sleep(exc.seconds+1)
@@ -223,7 +243,21 @@ async def main():
     groups=await discover_public_groups(client,state,now)
     group_last_ids=state.get('group_last_ids') or {}
 
-    for username,title in list(groups.items())[:MAX_DISCOVERED_GROUPS]:
+    all_groups=list(groups.items())
+    priority=[item for item in all_groups if item[0] in seed_groups]
+    priority_names={item[0] for item in priority}
+    others=[item for item in all_groups if item[0] not in priority_names]
+    remaining=max(0,MAX_DISCOVERED_GROUPS-len(priority))
+    cursor=int(state.get('group_scan_cursor',0) or 0)
+    rotated=[]
+    if others and remaining:
+        count=min(remaining,len(others))
+        rotated=[others[(cursor+i)%len(others)] for i in range(count)]
+        state['group_scan_cursor']=(cursor+count)%len(others)
+    selected_groups=(priority+rotated)[:MAX_DISCOVERED_GROUPS]
+    print('GROUP_SCAN_SET',len(selected_groups),'PRIORITY',len(priority),'CACHE',len(all_groups),'CURSOR',state.get('group_scan_cursor',0))
+
+    for username,title in selected_groups:
         min_id=int(group_last_ids.get(username,0) or 0)
         newest_id=min_id
         try:
@@ -240,13 +274,17 @@ async def main():
                     continue
                 seen[key]=None
                 value,reasons=score(message.message)
+                record_score(value,reasons)
                 if value<MIN_SCORE:
                     reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                     reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
-                stats['group_candidates']+=1
                 url=f'https://t.me/{username}/{message.id}'
-                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title or username}',key))
+                sent_key=delivery_key(url,message.message)
+                if sent_key in sent_keys:
+                    continue
+                stats['group_candidates']+=1
+                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title or username}',key,sent_key))
             if newest_id>min_id:
                 group_last_ids[username]=newest_id
         except FloodWaitError as exc:
@@ -279,13 +317,17 @@ async def main():
                 continue
             seen[key]=None
             value,reasons=score(item['text'])
+            record_score(value,reasons)
             if value<MIN_SCORE:
                 reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                 reject_counts[reason]=reject_counts.get(reason,0)+1
                 continue
+            sent_key=delivery_key(item['url'],item['text'])
+            if sent_key in sent_keys:
+                continue
             stats['web_candidates']+=1
             published=item.get('published') or datetime.now(timezone.utc)
-            found.append((value,published,item['text'],item['url'],reasons,item.get('source','Web'),key))
+            found.append((value,published,item['text'],item['url'],reasons,item.get('source','Web'),key,sent_key))
         if web_due:
             state['last_web_run']=datetime.now(timezone.utc).isoformat()
     except Exception as exc:
@@ -294,10 +336,11 @@ async def main():
     found.sort(key=lambda item:(item[0],item[1]),reverse=True)
     sent=0
     failed=0
-    for value,published,text,url,reasons,source,seen_key in found[:MAX_LEADS_PER_RUN]:
+    for value,published,text,url,reasons,source,seen_key,sent_key in found[:MAX_LEADS_PER_RUN]:
         card=build(text,url,source,value,reasons,published.strftime('%d.%m %H:%M UTC'))
         try:
             await notify(card)
+            sent_keys[sent_key]=None
             sent+=1
         except Exception as exc:
             failed+=1
@@ -305,12 +348,16 @@ async def main():
             print('SEND_WARN',source,type(exc).__name__)
 
     state['seen']=list(seen.keys())[-20000:]
+    state['sent']=list(sent_keys.keys())[-10000:]
     state['last_run']=datetime.now(timezone.utc).isoformat()
     save_state(state)
     await client.disconnect()
     top_queries=sorted(query_hits.items(),key=lambda x:x[1],reverse=True)[:10]
     top_rejects=sorted(reject_counts.items(),key=lambda x:x[1],reverse=True)[:10]
+    top_signals=sorted(signal_combos.items(),key=lambda x:x[1],reverse=True)[:10]
     print('PIPELINE_STATS',json.dumps(stats,ensure_ascii=False,sort_keys=True))
+    print('SCORE_HIST',json.dumps(sorted(score_hist.items(),key=lambda x:int(x[0])),ensure_ascii=False))
+    print('SIGNAL_COMBOS',json.dumps(top_signals,ensure_ascii=False))
     print('QUERY_HITS',json.dumps(top_queries,ensure_ascii=False))
     print('REJECT_COUNTS',json.dumps(top_rejects,ensure_ascii=False))
     print('FOUND',len(found),'SENT',sent,'SEND_FAILED',failed,'GROUPS',len(groups),'SEEN',len(state['seen']))

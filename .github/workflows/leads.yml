@@ -85,6 +85,7 @@ jobs:
           WEB_INTERVAL_MINUTES: "60"
           DISCOVERY_INTERVAL_MINUTES: "360"
           MAX_DISCOVERED_GROUPS: "30"
+          GROUP_CACHE_LIMIT: "120"
           GROUP_SCAN_LIMIT: "80"
           INITIAL_GROUP_SCAN_LIMIT: "180"
         run: python lead_bot.py

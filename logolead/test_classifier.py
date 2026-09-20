@@ -15,7 +15,7 @@ cases=[
  ('need-question','Нужен ли логопед? Ребёнок не строит предложения',50),
  ('speech-specialist','Порекомендуйте специалиста по речи ребенку 6 лет',60),
  ('direct-question','Кто-нибудь знает хорошего логопеда?',55),
- ('short-request','Логопед ребенку 5 лет, Москва',60),
+ ('short-request','Логопед ребенку 5 лет, Москва',55),
  ('contact-request','Поделитесь контактом логопеда для ребёнка',55),
 ]
 for name,text,minimum in cases:
@@ -27,6 +27,10 @@ assert extract('Ребенку 1,5 года, почти не говорит')['a
 assert extract('Дочке 5, не выговаривает Р')['age']==5
 assert extract('Пишу сочинение про развитие речи')['city'] is None
 assert extract('Ищу логопеда в СПб')['city']=='Санкт-Петербург'
+assert extract('Ищу логопеда в Краснодаре')['city']=='Краснодар'
+assert score('Логопед для ребенка онлайн. Постановка звуков и запуск речи.')[0]<50
+assert score('Ребенок 4 года не говорит, нормально ли это?')[0]>=50
+assert score('Логопед для ребёнка 5 лет, Москва')[0]>=50
 value,reasons=score(cases[0][1])
 card=build(cases[0][1],'https://t.me/test/1','TEST',value,reasons,'now')
 assert '90/100' in card and 'https://t.me/test/1' in card and 'TEST' in card
