@@ -1,5 +1,8 @@
+from classifier import extract
+
+
 def detect_issue(text):
-    t = ' '.join((text or '').lower().split())
+    t=' '.join((text or '').lower().split())
     if any(x in t for x in ['не говорит','запуск речи','не говорит предложениями','задержка речи']): return 'запуск речи'
     if 'зрр' in t or 'зпрр' in t: return 'ЗРР/ЗПРР'
     if 'дисграф' in t: return 'дисграфия'
@@ -12,7 +15,30 @@ def detect_issue(text):
     return 'речь и произношение'
 
 
+def format_age(age):
+    if age is None: return None
+    return str(age).replace('.0','').replace('.',',')
+
+
+def age_word(age):
+    if age is None: return ''
+    if isinstance(age,float) and not age.is_integer(): return 'года'
+    value=int(age)
+    if value%100 in (11,12,13,14): return 'лет'
+    if value%10==1: return 'год'
+    if value%10 in (2,3,4): return 'года'
+    return 'лет'
+
+
 def draft_reply(text):
-    issue = detect_issue(text)
-    online = ' Можно начать с онлайн-консультации.' if 'онлайн' in (text or '').lower() else ''
-    return f'Здравствуйте! Вижу ваш запрос по теме «{issue}». Подскажите, пожалуйста, возраст ребёнка и что именно сейчас вызывает трудности? После этого можно понять, какой формат занятий лучше подойдёт.{online}'
+    issue=detect_issue(text)
+    meta=extract(text)
+    lead=f'Здравствуйте! Вижу ваш запрос по теме «{issue}».'
+    if meta['age'] is None:
+        question=' Подскажите, пожалуйста, возраст ребёнка и что именно сейчас вызывает наибольшие трудности?'
+    else:
+        question=f' Ребёнку {format_age(meta["age"])} {age_word(meta["age"])} — подскажите, пожалуйста, что именно сейчас вызывает наибольшие трудности и были ли уже занятия со специалистом?'
+    finish=' После этого можно понять, какой формат занятий лучше подойдёт.'
+    if meta['mode']=='онлайн':
+        finish=' После уточнений можно сразу понять, как лучше выстроить занятия в онлайн-формате.'
+    return lead+question+finish

@@ -17,7 +17,7 @@ BOT_TOKEN=os.environ.get('LEADS_BOT_TOKEN','')
 CHAT_ID=os.environ.get('LEADS_CHAT_ID','')
 
 STATE_VERSION=3
-CLASSIFIER_VERSION=2
+CLASSIFIER_VERSION=3
 STATE_DIR=Path('.lead_state')
 STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
@@ -45,6 +45,7 @@ SEARCH_QUERIES=[
     'плохо говорит ребенок','плохо говорит ребёнок','не выговаривает р',
     'не выговаривает л','не выговаривает звуки','запуск речи','ЗРР логопед',
     'ЗПРР логопед','дисграфия логопед','дислексия логопед',
+    'логопед','дефектолог','нейрологопед',
 ]
 DISCOVERY_QUERIES=[
     'логопед родители чат','мамы дети развитие речи','запуск речи родители',
@@ -101,7 +102,7 @@ async def notify(text):
 
 async def discover_public_groups(client,state,now):
     cached=state.get('groups') or {}
-    due=not cached
+    due=FORCE_RUN or not cached or not state.get('last_discovery')
     if cached and not FORCE_RUN and state.get('last_discovery'):
         try:
             due=now-datetime.fromisoformat(state['last_discovery'])>=timedelta(minutes=DISCOVERY_INTERVAL_MINUTES)
@@ -152,6 +153,10 @@ async def main():
     state=load_state()
     seen=dict.fromkeys(state.get('seen',[]))
     found=[]
+    seed_groups={}
+    stats={'global_checked':0,'global_candidates':0,'group_checked':0,'group_candidates':0,'web_checked':0,'web_candidates':0}
+    reject_counts={}
+    query_hits={}
     now=datetime.now(timezone.utc)
 
     if not FORCE_RUN and RUN_INTERVAL_MINUTES>0 and state.get('last_run'):
@@ -178,17 +183,28 @@ async def main():
                 if message.date<cutoff:
                     break
                 chat=await message.get_chat()
+                stats['global_checked']+=1
+                query_hits[query]=query_hits.get(query,0)+1
+                username=getattr(chat,'username',None)
+                title=getattr(chat,'title',None) or username or 'public'
+                low_title=(title or '').lower()
+                if username and not getattr(chat,'broadcast',False) and not any(x in low_title for x in COMMERCIAL_CHAT_MARKERS):
+                    seed_groups[username]=title or username
                 chat_id=getattr(chat,'id',0)
                 key=message_key(chat_id,message.id)
                 if key in seen:
                     continue
                 seen[key]=None
+                if not username:
+                    reject_counts['нет публичной ссылки']=reject_counts.get('нет публичной ссылки',0)+1
+                    continue
                 value,reasons=score(message.message)
                 if value<MIN_SCORE:
+                    reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
+                    reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
-                username=getattr(chat,'username',None)
+                stats['global_candidates']+=1
                 url=f'https://t.me/{username}/{message.id}' if username else ''
-                title=getattr(chat,'title',None) or username or 'public'
                 found.append((value,message.date,message.message,url,reasons,f'Telegram: {title}',key))
         except FloodWaitError as exc:
             if exc.seconds<=60:
@@ -199,6 +215,11 @@ async def main():
         except Exception as exc:
             print('GLOBAL_WARN',query,type(exc).__name__)
 
+    if seed_groups:
+        merged_groups=dict(seed_groups)
+        merged_groups.update(state.get('groups') or {})
+        state['groups']=merged_groups
+    print('GLOBAL_STATS',stats['global_checked'],stats['global_candidates'],'SEED_GROUPS',len(seed_groups))
     groups=await discover_public_groups(client,state,now)
     group_last_ids=state.get('group_last_ids') or {}
 
@@ -213,13 +234,17 @@ async def main():
                     continue
                 if message.date<cutoff:
                     break
+                stats['group_checked']+=1
                 key=message_key(username,message.id)
                 if key in seen:
                     continue
                 seen[key]=None
                 value,reasons=score(message.message)
                 if value<MIN_SCORE:
+                    reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
+                    reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
+                stats['group_candidates']+=1
                 url=f'https://t.me/{username}/{message.id}'
                 found.append((value,message.date,message.message,url,reasons,f'Telegram: {title or username}',key))
             if newest_id>min_id:
@@ -248,13 +273,17 @@ async def main():
         web_items=await asyncio.to_thread(collect_web,MAX_AGE_HOURS) if web_due else []
         print('WEB_ITEMS',len(web_items))
         for item in web_items:
+            stats['web_checked']+=1
             key=hashlib.sha256(item['url'].encode()).hexdigest()
             if key in seen:
                 continue
             seen[key]=None
             value,reasons=score(item['text'])
             if value<MIN_SCORE:
+                reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
+                reject_counts[reason]=reject_counts.get(reason,0)+1
                 continue
+            stats['web_candidates']+=1
             published=item.get('published') or datetime.now(timezone.utc)
             found.append((value,published,item['text'],item['url'],reasons,item.get('source','Web'),key))
         if web_due:
@@ -279,6 +308,11 @@ async def main():
     state['last_run']=datetime.now(timezone.utc).isoformat()
     save_state(state)
     await client.disconnect()
+    top_queries=sorted(query_hits.items(),key=lambda x:x[1],reverse=True)[:10]
+    top_rejects=sorted(reject_counts.items(),key=lambda x:x[1],reverse=True)[:10]
+    print('PIPELINE_STATS',json.dumps(stats,ensure_ascii=False,sort_keys=True))
+    print('QUERY_HITS',json.dumps(top_queries,ensure_ascii=False))
+    print('REJECT_COUNTS',json.dumps(top_rejects,ensure_ascii=False))
     print('FOUND',len(found),'SENT',sent,'SEND_FAILED',failed,'GROUPS',len(groups),'SEEN',len(state['seen']))
 
 if __name__=='__main__':
