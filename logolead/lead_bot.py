@@ -8,6 +8,7 @@ from telethon.tl.functions.contacts import SearchRequest
 from classifier import score
 from card import build
 from web_sources import collect_web
+from market_sources import collect_markets
 from sources import merge_unique
 
 TG_API_ID=int(os.environ.get('TG_API_ID','0'))
@@ -30,9 +31,17 @@ GROUP_SCAN_LIMIT=int(os.environ.get('GROUP_SCAN_LIMIT','80'))
 INITIAL_GROUP_SCAN_LIMIT=int(os.environ.get('INITIAL_GROUP_SCAN_LIMIT','180'))
 MAX_DISCOVERED_GROUPS=int(os.environ.get('MAX_DISCOVERED_GROUPS','30'))
 GROUP_CACHE_LIMIT=int(os.environ.get('GROUP_CACHE_LIMIT','120'))
+DEEP_GROUP_INTERVAL_MINUTES=int(os.environ.get('DEEP_GROUP_INTERVAL_MINUTES','180'))
+DEEP_GROUP_SCAN_COUNT=int(os.environ.get('DEEP_GROUP_SCAN_COUNT','6'))
+DEEP_GROUP_SEARCH_LIMIT=int(os.environ.get('DEEP_GROUP_SEARCH_LIMIT','15'))
 WEB_INTERVAL_MINUTES=int(os.environ.get('WEB_INTERVAL_MINUTES','60'))
+MARKET_INTERVAL_MINUTES=int(os.environ.get('MARKET_INTERVAL_MINUTES','30'))
 ENABLE_WEB=os.environ.get('ENABLE_WEB','0').strip().lower() in {'1','true','yes','on'}
+ENABLE_MARKETS=os.environ.get('ENABLE_MARKETS','1').strip().lower() in {'1','true','yes','on'}
 FORCE_RUN=os.environ.get('FORCE_RUN','0').strip().lower() in {'1','true','yes','on'}
+SEND_STATUS=os.environ.get('SEND_STATUS','0').strip().lower() in {'1','true','yes','on'}
+STATUS_INTERVAL_HOURS=int(os.environ.get('STATUS_INTERVAL_HOURS','24'))
+BUILD_SHA=os.environ.get('GITHUB_SHA','local')[:7]
 
 SEARCH_QUERIES=[
     'ищу логопеда','ищем логопеда','нужен логопед','логопед нужен',
@@ -55,8 +64,12 @@ DISCOVERY_QUERIES=[
     'мамы дошкольников чат','мамочки чат дети','родители дети чат',
     'особенные дети родители','развитие детей родители чат',
     'мамы москва чат','мамы спб чат','мамы краснодар чат','мамы сочи чат',
-    'мамы казань чат','мамы екатеринбург чат',
+    'мамы казань чат','мамы екатеринбург чат','мамы новосибирск чат','мамы красноярск чат',
+    'мамы самара чат','мамы уфа чат','мамы ростов чат','мамы воронеж чат','мамы пермь чат',
+    'мамы тюмень чат','мамы челябинск чат','мамы нижний новгород чат','мамы омск чат',
+    'мамы волгоград чат','мамы минск чат','мамы алматы чат','мамы астана чат',
 ]
+DEEP_GROUP_QUERIES=['логопед','дефектолог','нейрологопед','не говорит','не выговаривает','зрр','зпрр','картавит','шепелявит','заикается','задержка речи','запуск речи','дисграфия']
 COMMERCIAL_CHAT_MARKERS=[
     'услуги логопеда','логопедический центр','школа логопеда',
     'курсы логопедов','вакансии логопед','обучение логопедов',
@@ -162,7 +175,7 @@ async def main():
     sent_keys=dict.fromkeys(state.get('sent',[]))
     found=[]
     seed_groups={}
-    stats={'global_checked':0,'global_candidates':0,'group_checked':0,'group_candidates':0,'web_checked':0,'web_candidates':0}
+    stats={'global_checked':0,'global_candidates':0,'group_checked':0,'group_candidates':0,'deep_checked':0,'deep_candidates':0,'market_checked':0,'market_candidates':0,'web_checked':0,'web_candidates':0}
     reject_counts={}
     query_hits={}
     score_hist={}
@@ -297,8 +310,92 @@ async def main():
             print('SCAN_WARN',username,type(exc).__name__)
 
     state['group_last_ids']=group_last_ids
+
+    deep_due=FORCE_RUN or not state.get('last_deep_scan')
+    if not FORCE_RUN and state.get('last_deep_scan'):
+        try:
+            deep_due=now-datetime.fromisoformat(state['last_deep_scan'])>=timedelta(minutes=DEEP_GROUP_INTERVAL_MINUTES)
+        except Exception:
+            deep_due=True
+    if deep_due and all_groups:
+        deep_cursor=int(state.get('deep_group_cursor',0) or 0)
+        deep_count=min(DEEP_GROUP_SCAN_COUNT,len(all_groups))
+        deep_groups=[all_groups[(deep_cursor+i)%len(all_groups)] for i in range(deep_count)]
+        state['deep_group_cursor']=(deep_cursor+deep_count)%len(all_groups)
+        print('DEEP_SCAN_SET',len(deep_groups),'CURSOR',state['deep_group_cursor'])
+        stop_deep=False
+        for username,title in deep_groups:
+            if stop_deep:
+                break
+            for query in DEEP_GROUP_QUERIES:
+                try:
+                    async for message in client.iter_messages(username,search=query,limit=DEEP_GROUP_SEARCH_LIMIT):
+                        if not message.message or not message.date:
+                            continue
+                        if message.date<cutoff:
+                            break
+                        stats['deep_checked']+=1
+                        key=message_key(username,message.id)
+                        if key in seen:
+                            continue
+                        seen[key]=None
+                        value,reasons=score(message.message)
+                        record_score(value,reasons)
+                        if value<MIN_SCORE:
+                            reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
+                            reject_counts[reason]=reject_counts.get(reason,0)+1
+                            continue
+                        url=f'https://t.me/{username}/{message.id}'
+                        sent_key=delivery_key(url,message.message)
+                        if sent_key in sent_keys:
+                            continue
+                        stats['deep_candidates']+=1
+                        found.append((value,message.date,message.message,url,reasons,f'Telegram: {title or username}',key,sent_key))
+                except FloodWaitError as exc:
+                    if exc.seconds<=60:
+                        await asyncio.sleep(exc.seconds+1)
+                    else:
+                        print('DEEP_FLOOD_WAIT',username,exc.seconds)
+                        stop_deep=True
+                        break
+                except Exception as exc:
+                    print('DEEP_SCAN_WARN',username,query,type(exc).__name__)
+        state['last_deep_scan']=datetime.now(timezone.utc).isoformat()
+
     found=merge_unique(found)
     found=[item for item in found if item[0]>=MIN_SCORE]
+
+    market_due=ENABLE_MARKETS
+    if market_due and not FORCE_RUN and state.get('last_market_run'):
+        try:
+            market_due=now-datetime.fromisoformat(state['last_market_run'])>=timedelta(minutes=MARKET_INTERVAL_MINUTES)
+        except Exception:
+            market_due=True
+    try:
+        market_items=await asyncio.to_thread(collect_markets,MAX_AGE_HOURS) if market_due else []
+        print('MARKET_ITEMS',len(market_items))
+        for item in market_items:
+            stats['market_checked']+=1
+            key=hashlib.sha256(item['url'].encode()).hexdigest()
+            if key in seen:
+                continue
+            seen[key]=None
+            value,reasons=score(item['text'])
+            record_score(value,reasons)
+            if value<MIN_SCORE:
+                reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
+                reject_counts[reason]=reject_counts.get(reason,0)+1
+                continue
+            sent_key=delivery_key(item['url'],item['text'])
+            if sent_key in sent_keys:
+                continue
+            stats['market_candidates']+=1
+            published=item.get('published') or datetime.now(timezone.utc)
+            found.append((value,published,item['text'],item['url'],reasons,item.get('source','Marketplace'),key,sent_key))
+        if market_due:
+            state['last_market_run']=datetime.now(timezone.utc).isoformat()
+    except Exception as exc:
+        print('MARKET_SCAN_WARN',type(exc).__name__)
 
     web_due=ENABLE_WEB
     if web_due and not FORCE_RUN and state.get('last_web_run'):
@@ -346,6 +443,25 @@ async def main():
             failed+=1
             seen.pop(seen_key,None)
             print('SEND_WARN',source,type(exc).__name__)
+
+    status_due=SEND_STATUS and not state.get('last_status')
+    if SEND_STATUS and state.get('last_status'):
+        try:
+            status_due=datetime.now(timezone.utc)-datetime.fromisoformat(state['last_status'])>=timedelta(hours=STATUS_INTERVAL_HOURS)
+        except Exception:
+            status_due=True
+    if status_due:
+        summary=(
+            f'✅ LogoLead работает\nВерсия: {BUILD_SHA}\n'
+            f'Проверено: Telegram global {stats["global_checked"]}, группы {stats["group_checked"]}, глубокий поиск {stats["deep_checked"]}, площадки {stats["market_checked"]}\n'
+            f'Публичных групп в базе: {len(groups)}\n'
+            f'Новых подходящих лидов: {len(found)}, отправлено: {sent}'
+        )
+        try:
+            await notify(summary)
+            state['last_status']=datetime.now(timezone.utc).isoformat()
+        except Exception as exc:
+            print('STATUS_SEND_WARN',type(exc).__name__)
 
     state['seen']=list(seen.keys())[-20000:]
     state['sent']=list(sent_keys.keys())[-10000:]
