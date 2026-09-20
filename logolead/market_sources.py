@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) LogoLead/1.0'
 KWORK_BASE='https://kwork.ru'
 KWORK_QUERIES=['логопед','дефектолог','нейрологопед','дисграфия','дислексия']
+KWORK_REQUIRED_TERMS=['логопед','дефектолог','нейрологопед','дисграф','дислекс','зрр','зпрр','запуск речи','постановка звуков']
 
 def fetch_text(url,limit=2_000_000):
     req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept-Language':'ru-RU,ru;q=0.9'})
@@ -57,6 +58,11 @@ def kwork_project_text(item):
         parts.append(f'Бюджет: {price}')
     return ' '.join(x for x in parts if x).strip()
 
+
+def is_kwork_relevant(text):
+    low=(text or '').lower()
+    return any(term in low for term in KWORK_REQUIRED_TERMS)
+
 def fetch_kwork_query(query):
     url=KWORK_BASE+'/projects?'+urllib.parse.urlencode({'keyword':query})
     page=fetch_text(url)
@@ -88,7 +94,7 @@ def collect_kwork(max_age_hours=72):
                 if not project_id:
                     continue
                 text=kwork_project_text(item)
-                if len(text)<8:
+                if len(text)<8 or not is_kwork_relevant(text):
                     continue
                 project_url=f'{KWORK_BASE}/projects/{project_id}/view'
                 merged[project_url]={

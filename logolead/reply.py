@@ -42,3 +42,18 @@ def draft_reply(text):
     if meta['mode']=='онлайн':
         finish=' После уточнений можно сразу понять, как лучше выстроить занятия в онлайн-формате.'
     return lead+question+finish
+
+
+def draft_market_reply(text):
+    issue=detect_issue(text)
+    meta=extract(text)
+    parts=[f'Здравствуйте! Готов(а) помочь с вашим запросом по теме «{issue}».']
+    if meta['age'] is None:
+        parts.append('Подскажите, пожалуйста, возраст ребёнка и какие трудности сейчас наиболее заметны.')
+    else:
+        parts.append(f'Вижу, что ребёнку {format_age(meta["age"])} {age_word(meta["age"])}. Подскажите, пожалуйста, какие трудности сейчас наиболее заметны и были ли занятия со специалистом.')
+    if meta['mode']=='онлайн':
+        parts.append('Онлайн-формат возможен; после уточнений можно подобрать подходящий план занятий.')
+    else:
+        parts.append('После уточнений можно предложить подходящий формат и план занятий.')
+    return ' '.join(parts)

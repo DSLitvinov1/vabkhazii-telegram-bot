@@ -1,4 +1,4 @@
-from reply import detect_issue,draft_reply,age_word
+from reply import detect_issue,draft_reply,draft_market_reply,age_word
 
 cases={
  'Ребенок картавит':'звук Р',
@@ -22,4 +22,6 @@ reply=draft_reply('Ищу логопеда ребёнку 5 лет, не выг�
 assert 'Ребёнку 5 лет' in reply
 assert 'возраст ребёнка' not in reply
 assert 'онлайн-формате' in reply
+market=draft_market_reply('Нужен логопед ребёнку 5 лет, не выговаривает Р')
+assert 'Готов(а) помочь' in market and '5 лет' in market
 print('REPLY_OK')

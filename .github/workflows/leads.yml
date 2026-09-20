@@ -22,10 +22,10 @@ jobs:
 
     steps:
       - name: Download repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Restore leads history
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .lead_state
@@ -35,7 +35,7 @@ jobs:
             vabkhazii-leads-
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -68,7 +68,7 @@ jobs:
           MAX_AGE_HOURS: "72"
           MAX_LEADS_PER_RUN: "12"
           RUN_INTERVAL_MINUTES: "10"
-          FORCE_RUN: ${{ github.event.inputs.force_logolead || '0' }}
+          FORCE_RUN: ${{ inputs.force_logolead || '0' }}
           DISCOVERY_INTERVAL_MINUTES: "360"
           MAX_DISCOVERED_GROUPS: "30"
           GROUP_CACHE_LIMIT: "120"

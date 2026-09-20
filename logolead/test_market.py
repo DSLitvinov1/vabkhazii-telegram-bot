@@ -24,4 +24,6 @@ dt=market_sources.parse_kwork_datetime('2026-09-20 17:43:21')
 assert dt is not None and dt.tzinfo==timezone.utc
 text=market_sources.kwork_project_text(payload['pagination']['data'][0])
 assert 'Нужен логопед ребёнку' in text and 'Бюджет: 1500.00' in text
+assert market_sources.is_kwork_relevant(text)
+assert not market_sources.is_kwork_relevant('Нужен монтаж видео и дизайн лендинга')
 print('MARKET_TEST_OK')

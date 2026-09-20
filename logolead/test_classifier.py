@@ -37,5 +37,9 @@ assert score('Логопед для ребёнка 5 лет, Москва')[0]>=
 value,reasons=score(cases[0][1])
 card=build(cases[0][1],'https://t.me/test/1','TEST',value,reasons,'now')
 assert '90/100' in card and 'https://t.me/test/1' in card and 'TEST' in card
+geo_card=build('Нужен логопед ребёнку 5 лет','https://t.me/moms/1','Telegram: Мамы Москвы',60,['прямой поиск специалиста'],'now')
+assert 'География чата: Москва' in geo_card
+market_card=build('Нужен логопед ребёнку 5 лет','https://kwork.ru/projects/1/view','Kwork',60,['прямой поиск специалиста'],'now')
+assert 'Готов(а) помочь' in market_card
 assert '\n' in card and '\\n' not in card
 print('ALL_TESTS_OK')
