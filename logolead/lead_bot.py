@@ -25,6 +25,7 @@ STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
 SEARCH_LIMIT=int(os.environ.get('SEARCH_LIMIT','40'))
 MAX_LEADS_PER_RUN=int(os.environ.get('MAX_LEADS_PER_RUN','25'))
+DELIVERY_MAX_AGE_HOURS=int(os.environ.get('DELIVERY_MAX_AGE_HOURS','24'))
 PENDING_LIMIT=int(os.environ.get('PENDING_LIMIT','500'))
 MIN_SCORE=int(os.environ.get('MIN_SCORE','35'))
 RUN_INTERVAL_MINUTES=int(os.environ.get('RUN_INTERVAL_MINUTES','10'))
@@ -222,6 +223,13 @@ def pending_stats(items):
             hot+=1
     top_sources=sorted(sources.items(),key=lambda x:x[1],reverse=True)[:8]
     return {'total':len(items),'hot':hot,'sources':top_sources}
+
+def select_delivery_candidates(items,now=None):
+    now=now or datetime.now(timezone.utc)
+    cutoff=now-timedelta(hours=DELIVERY_MAX_AGE_HOURS)
+    deliverable=[item for item in items if item[1]>=cutoff]
+    stale_count=len(items)-len(deliverable)
+    return deliverable[:MAX_LEADS_PER_RUN],deliverable[MAX_LEADS_PER_RUN:],stale_count
 
 async def notify(text):
     if not BOT_TOKEN or not CHAT_ID:
@@ -675,8 +683,10 @@ async def main():
     failed=0
     remaining=[]
     if DELIVERY_ENABLED:
-        batch=found[:MAX_LEADS_PER_RUN]
-        remaining.extend(found[MAX_LEADS_PER_RUN:])
+        batch,queued_after_batch,stale_count=select_delivery_candidates(found)
+        if stale_count:
+            print('STALE_PENDING_DROPPED',stale_count)
+        remaining.extend(queued_after_batch)
         for value,published,text,url,reasons,source,seen_key,sent_key in batch:
             card=build(text,url,source,value,reasons,format_published(published))
             try:

@@ -74,6 +74,7 @@ jobs:
           MIN_SCORE: "50"
           MAX_AGE_HOURS: "72"
           MAX_LEADS_PER_RUN: "12"
+          DELIVERY_MAX_AGE_HOURS: "24"
           PENDING_LIMIT: "500"
           DELIVERY_ENABLED: "0"
           RUN_INTERVAL_MINUTES: "10"
