@@ -22,12 +22,59 @@ from telethon.tl.types import User
 # CONFIG
 # =========================================================
 
-TG_API_ID = int(os.environ["TG_API_ID"])
-TG_API_HASH = os.environ["TG_API_HASH"]
-TG_SESSION = os.environ["TG_SESSION"]
+def require_env(name):
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Required secret {name} is empty")
+    return value
 
-LEADS_BOT_TOKEN = os.environ["LEADS_BOT_TOKEN"]
-LEADS_CHAT_ID = os.environ["LEADS_CHAT_ID"]
+
+def normalize_tg_session(raw_value):
+    """
+    Makes TG_SESSION tolerant to accidental line wraps / quotes when copied
+    from PowerShell into GitHub Secrets, while still validating it with
+    Telethon before any network connection is attempted.
+    """
+    raw_value = (raw_value or "").strip().strip('"').strip("'")
+    compact = re.sub(r"\s+", "", raw_value)
+
+    chunks = []
+    if compact.startswith("1"):
+        chunks.append(compact)
+    chunks.extend(re.findall(r"1[A-Za-z0-9_-]{200,500}", compact))
+
+    tested = set()
+    for chunk in chunks:
+        # First try the whole candidate, then valid-looking prefixes. This
+        # also recovers from an accidentally copied note after the session.
+        lengths = [len(chunk)] + list(range(min(len(chunk), 450), 199, -1))
+        for length in lengths:
+            candidate = chunk[:length]
+            if candidate in tested:
+                continue
+            tested.add(candidate)
+            try:
+                StringSession(candidate)
+                return candidate
+            except Exception:
+                pass
+
+    raise RuntimeError(
+        "TG_SESSION is malformed. Update the GitHub secret with the complete "
+        "StringSession value printed by create_session.py."
+    )
+
+
+_api_id_raw = require_env("TG_API_ID")
+if not _api_id_raw.isdigit():
+    raise RuntimeError("TG_API_ID must contain digits only")
+
+TG_API_ID = int(_api_id_raw)
+TG_API_HASH = require_env("TG_API_HASH")
+TG_SESSION = normalize_tg_session(require_env("TG_SESSION"))
+
+LEADS_BOT_TOKEN = require_env("LEADS_BOT_TOKEN")
+LEADS_CHAT_ID = require_env("LEADS_CHAT_ID")
 
 # Ручной тестовый режим из GitHub Actions.
 # В TEST_MODE бот НЕ ищет лиды и НЕ изменяет историю/антидубли.
