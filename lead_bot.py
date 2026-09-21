@@ -213,6 +213,22 @@ EXTERNAL_SOURCES = [
             'site:babyblog.ru inurl:community/travel/post Абхазия с детьми since:month',
         ],
     },
+    {
+        "key": "telegram_public_index",
+        "name": "Telegram — публичные сообщения",
+        "kind": "telegram_index",
+        "access": "search_index",
+        "domain": "t.me",
+        "path_regex": r"/(?:s/)?[^/]+/\d+",
+        "search_queries": [
+            'site:t.me Абхазия "нужен трансфер"',
+            'site:t.me Абхазия "ищем трансфер"',
+            'site:t.me Абхазия "ищем экскурсию"',
+            'site:t.me Абхазия "нужен гид"',
+            'site:t.me Гагра Пицунда Сухум "кто может отвезти"',
+            'site:t.me Рица "кто едет"',
+        ],
+    },
 ]
 # Белый список именно туристических обсуждений, не рекламных каналов гидов.
 # Недоступный/переименованный чат просто будет пропущен с warning в Actions.
@@ -2552,6 +2568,9 @@ def _source_url_allowed(source, url):
         path_contains = source.get("path_contains")
         if path_contains and path_contains.lower() not in (parsed.path or "").lower():
             return False
+        path_regex = source.get("path_regex")
+        if path_regex and not re.search(path_regex, parsed.path or "", flags=re.I):
+            return False
         return parsed.scheme in {"http", "https"}
     except Exception:
         return False
@@ -2836,16 +2855,16 @@ def scan_external_web_sources(state, stats):
     state.setdefault("external_seen", [])
     state.setdefault("external_initialized", {})
 
-    # Мы сменили бесплатный поисковый слой Bing RSS -> Mojeek HTML.
-    # Чтобы первый успешный Mojeek-запуск не прислал старые темы как новые,
-    # сбрасываем только базовую точку поисковых источников и создаём её заново.
-    search_engine_version = "mojeek_html_v1"
+    # Search-index sources use a dual Mojeek + Bing RSS transport.
+    # A version bump rebuilds the baseline once, preventing old indexed pages
+    # from being emitted as fresh leads after a search-layer change.
+    search_engine_version = "dual_search_v2"
     if state.get("external_search_engine_version") != search_engine_version:
         for source in EXTERNAL_SOURCES:
             if source.get("access") == "search_index":
                 state["external_initialized"].pop(source["key"], None)
         state["external_search_engine_version"] = search_engine_version
-        print("[MOJEEK] search-index baseline reset for the new engine")
+        print("[SEARCH INDEX] baseline reset for the new engine")
 
     seen_set = set(state.get("external_seen", []))
 
@@ -2858,7 +2877,7 @@ def scan_external_web_sources(state, stats):
         key = source["key"]
         name = source["name"]
         if source.get("access") == "search_index":
-            print(f"[EXTERNAL] {name}: free Mojeek search-index mode")
+            print(f"[EXTERNAL] {name}: public search-index mode")
         else:
             print(f"[EXTERNAL] {name}: {source['url']}")
         try:
@@ -2866,8 +2885,8 @@ def scan_external_web_sources(state, stats):
 
             if access == "search_index":
                 items = fetch_search_index_items(source)
-                bump_stat(stats, "external_mojeek_ok")
-                print(f"[MOJEEK SOURCE RESULT] {name}: {len(items)} unique item(s)")
+                bump_stat(stats, "external_search_index_ok")
+                print(f"[SEARCH INDEX SOURCE RESULT] {name}: {len(items)} unique item(s)")
             else:
                 page_html = fetch_public_html(source["url"])
                 items = parse_external_source(source, page_html)
@@ -2991,7 +3010,7 @@ def new_filter_stats():
         "merged_chains": 0,
         "merged_messages": 0,
         "external_pages_ok": 0,
-        "external_mojeek_ok": 0,
+        "external_search_index_ok": 0,
         "external_baseline": 0,
         "external_new": 0,
         "external_accepted": 0,
@@ -3069,7 +3088,7 @@ def print_filter_stats(stats):
     print("")
     print("EXTERNAL SOURCE STATS")
     print(f"  Direct pages OK:  {stats.get('external_pages_ok', 0)}")
-    print(f"  Mojeek sources OK:{stats.get('external_mojeek_ok', 0)}")
+    print(f"  Search-index OK: {stats.get('external_search_index_ok', 0)}")
     print(f"  Baseline items:   {stats.get('external_baseline', 0)}")
     print(f"  New items:        {stats.get('external_new', 0)}")
     print(f"  Direct leads:     {stats.get('external_accepted', 0)}")
