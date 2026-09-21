@@ -44,6 +44,8 @@ MARKET_INTERVAL_MINUTES=int(os.environ.get('MARKET_INTERVAL_MINUTES','30'))
 ENABLE_WEB=os.environ.get('ENABLE_WEB','0').strip().lower() in {'1','true','yes','on'}
 ENABLE_MARKETS=os.environ.get('ENABLE_MARKETS','1').strip().lower() in {'1','true','yes','on'}
 DELIVERY_ENABLED=os.environ.get('DELIVERY_ENABLED','0').strip().lower() in {'1','true','yes','on'}
+ENABLE_FEEDBACK=os.environ.get('ENABLE_FEEDBACK','0').strip().lower() in {'1','true','yes','on'}
+FEEDBACK_LIMIT=int(os.environ.get('FEEDBACK_LIMIT','500'))
 FORCE_RUN=os.environ.get('FORCE_RUN','0').strip().lower() in {'1','true','yes','on'}
 SEND_STATUS=os.environ.get('SEND_STATUS','0').strip().lower() in {'1','true','yes','on'}
 STATUS_INTERVAL_HOURS=int(os.environ.get('STATUS_INTERVAL_HOURS','24'))
@@ -98,6 +100,9 @@ def load_state():
     state.setdefault('seen',[])
     state.setdefault('sent',[])
     state.setdefault('pending',[])
+    state.setdefault('feedback',{})
+    state.setdefault('feedback_index',{})
+    state.setdefault('bot_update_offset',0)
     state.setdefault('groups',{})
     state.setdefault('group_last_ids',{})
     state.setdefault('group_backfill_ids',{})
@@ -242,7 +247,77 @@ def author_url_from_source(source):
     match=re.search(r'автор\s+@([A-Za-z0-9_]{5,32})\b',source or '',re.I)
     return f'https://t.me/{match.group(1)}' if match else None
 
-async def notify(text,source_url=None,author_url=None):
+def feedback_id(sent_key):
+    return (sent_key or '')[:16]
+
+def parse_feedback_callback(data):
+    match=re.fullmatch(r'll:(good|bad):([0-9a-f]{8,24})',data or '')
+    return (match.group(1),match.group(2)) if match else None
+
+def feedback_counts(feedback):
+    values=[(item or {}).get('label') for item in (feedback or {}).values()]
+    return {'good':values.count('good'),'bad':values.count('bad'),'total':len(values)}
+
+def bot_api(method,payload=None):
+    if not BOT_TOKEN:
+        return {'ok':False,'result':[]}
+    data=urllib.parse.urlencode(payload or {}).encode()
+    req=urllib.request.Request(f'https://api.telegram.org/bot{BOT_TOKEN}/{method}',data=data)
+    with urllib.request.urlopen(req,timeout=20) as response:
+        return json.loads(response.read(2_000_000).decode('utf-8','ignore'))
+
+async def process_feedback_updates(state):
+    if not ENABLE_FEEDBACK or not BOT_TOKEN or not CHAT_ID:
+        return
+    offset=int(state.get('bot_update_offset',0) or 0)
+    payload={
+        'offset':offset,
+        'timeout':0,
+        'allowed_updates':json.dumps(['callback_query']),
+    }
+    try:
+        data=await asyncio.to_thread(bot_api,'getUpdates',payload)
+    except Exception as exc:
+        print('FEEDBACK_POLL_WARN',type(exc).__name__)
+        return
+    updates=data.get('result') or []
+    feedback=state.get('feedback') or {}
+    index=state.get('feedback_index') or {}
+    for update in updates:
+        try:
+            state['bot_update_offset']=max(int(state.get('bot_update_offset',0) or 0),int(update.get('update_id',0))+1)
+            callback=update.get('callback_query') or {}
+            parsed=parse_feedback_callback(callback.get('data'))
+            if not parsed:
+                continue
+            label,key=parsed
+            chat=((callback.get('message') or {}).get('chat') or {}).get('id')
+            if str(chat)!=str(CHAT_ID):
+                continue
+            feedback[key]={
+                'label':label,
+                'at':datetime.now(timezone.utc).isoformat(),
+                'lead':index.get(key,{})
+            }
+            answer='Отмечено: подходит' if label=='good' else 'Отмечено: не лид'
+            try:
+                await asyncio.to_thread(bot_api,'answerCallbackQuery',{
+                    'callback_query_id':callback.get('id',''),
+                    'text':answer,
+                    'show_alert':'false',
+                })
+            except Exception:
+                pass
+        except Exception as exc:
+            print('FEEDBACK_UPDATE_WARN',type(exc).__name__)
+    if len(feedback)>FEEDBACK_LIMIT:
+        feedback=dict(list(feedback.items())[-FEEDBACK_LIMIT:])
+    state['feedback']=feedback
+    counts=feedback_counts(feedback)
+    if updates:
+        print('FEEDBACK_STATS',json.dumps(counts,ensure_ascii=False,sort_keys=True))
+
+async def notify(text,source_url=None,author_url=None,feedback_key=None):
     if not BOT_TOKEN or not CHAT_ID:
         print('DRY_SEND',text.encode('ascii','backslashreplace').decode()[:400])
         return
@@ -251,13 +326,21 @@ async def notify(text,source_url=None,author_url=None):
         'text':text,
         'disable_web_page_preview':'true',
     }
+    rows=[]
     buttons=[]
     if source_url:
         buttons.append({'text':'Открыть источник','url':source_url})
     if author_url:
         buttons.append({'text':'Написать автору','url':author_url})
     if buttons:
-        payload['reply_markup']=json.dumps({'inline_keyboard':[buttons]},ensure_ascii=False)
+        rows.append(buttons)
+    if ENABLE_FEEDBACK and feedback_key:
+        rows.append([
+            {'text':'👍 Подходит','callback_data':f'll:good:{feedback_key}'},
+            {'text':'👎 Не лид','callback_data':f'll:bad:{feedback_key}'},
+        ])
+    if rows:
+        payload['reply_markup']=json.dumps({'inline_keyboard':rows},ensure_ascii=False)
     data=urllib.parse.urlencode(payload).encode()
     url=f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
 
@@ -341,7 +424,7 @@ async def discover_public_groups(client,state,now):
 def validate_config():
     if not (TG_API_ID and TG_API_HASH and TG_SESSION):
         raise RuntimeError('Missing Telegram user credentials')
-    if (DELIVERY_ENABLED or SEND_STATUS) and not (BOT_TOKEN and CHAT_ID):
+    if (DELIVERY_ENABLED or SEND_STATUS or ENABLE_FEEDBACK) and not (BOT_TOKEN and CHAT_ID):
         raise RuntimeError('Missing Telegram bot delivery credentials')
     return True
 
@@ -349,6 +432,7 @@ async def main():
     validate_config()
 
     state=load_state()
+    await process_feedback_updates(state)
     seen=dict.fromkeys(state.get('seen',[]))
     sent_keys=dict.fromkeys(state.get('sent',[]))
     found=[]
@@ -370,6 +454,7 @@ async def main():
         try:
             last=datetime.fromisoformat(state['last_run'])
             if now-last<timedelta(minutes=RUN_INTERVAL_MINUTES-1):
+                save_state(state)
                 print('SKIP_INTERVAL',state['last_run'])
                 return
         except Exception:
@@ -713,8 +798,20 @@ async def main():
         for value,published,text,url,reasons,source,seen_key,sent_key in batch:
             card=build(text,url,source,value,reasons,format_published(published))
             try:
-                await notify(card,url,author_url_from_source(source))
+                fid=feedback_id(sent_key) if ENABLE_FEEDBACK else None
+                await notify(card,url,author_url_from_source(source),fid)
                 sent_keys[sent_key]=None
+                if fid:
+                    index=state.get('feedback_index') or {}
+                    index[fid]={
+                        'score':value,
+                        'source':source,
+                        'url':url,
+                        'published':published.isoformat(),
+                    }
+                    if len(index)>FEEDBACK_LIMIT*2:
+                        index=dict(list(index.items())[-FEEDBACK_LIMIT*2:])
+                    state['feedback_index']=index
                 sent+=1
             except Exception as exc:
                 failed+=1
@@ -728,6 +825,8 @@ async def main():
     remaining.sort(key=lambda item:(item[0],item[1]),reverse=True)
     state['pending']=[candidate_to_pending(item) for item in remaining[:PENDING_LIMIT]]
     print('PENDING_STATS',json.dumps(pending_stats(state['pending']),ensure_ascii=False))
+    if ENABLE_FEEDBACK:
+        print('FEEDBACK_TOTALS',json.dumps(feedback_counts(state.get('feedback')),ensure_ascii=False,sort_keys=True))
 
     status_due=DELIVERY_ENABLED and SEND_STATUS and not state.get('last_status')
     if DELIVERY_ENABLED and SEND_STATUS and state.get('last_status'):

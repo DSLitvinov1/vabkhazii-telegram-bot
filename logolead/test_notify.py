@@ -17,14 +17,15 @@ def fake_urlopen(req,timeout=20):
         raise urllib.error.HTTPError(req.full_url,429,'Too Many Requests',None,body)
     return Response()
 
-old=(lead_bot.BOT_TOKEN,lead_bot.CHAT_ID,lead_bot.BOT_SEND_RETRIES,lead_bot.urllib.request.urlopen,lead_bot.time.sleep)
+old=(lead_bot.BOT_TOKEN,lead_bot.CHAT_ID,lead_bot.BOT_SEND_RETRIES,lead_bot.ENABLE_FEEDBACK,lead_bot.urllib.request.urlopen,lead_bot.time.sleep)
 lead_bot.BOT_TOKEN='test'
 lead_bot.CHAT_ID='1'
 lead_bot.BOT_SEND_RETRIES=1
+lead_bot.ENABLE_FEEDBACK=True
 lead_bot.urllib.request.urlopen=fake_urlopen
 lead_bot.time.sleep=lambda _:None
 try:
-    asyncio.run(lead_bot.notify('test message','https://t.me/test/1','https://t.me/mama_anna'))
+    asyncio.run(lead_bot.notify('test message','https://t.me/test/1','https://t.me/mama_anna','abcdef1234567890'))
     assert len(calls)==2,len(calls)
     body=urllib.parse.parse_qs(calls[-1].data.decode())
     assert body['chat_id']==['1']
@@ -32,9 +33,12 @@ try:
     buttons=markup['inline_keyboard'][0]
     assert buttons[0]['url']=='https://t.me/test/1' and buttons[0]['text']=='Открыть источник'
     assert buttons[1]['url']=='https://t.me/mama_anna' and buttons[1]['text']=='Написать автору'
+    feedback_buttons=markup['inline_keyboard'][1]
+    assert feedback_buttons[0]['callback_data']=='ll:good:abcdef1234567890'
+    assert feedback_buttons[1]['callback_data']=='ll:bad:abcdef1234567890'
     assert lead_bot.author_url_from_source('Telegram: Moms · автор @mama_anna')=='https://t.me/mama_anna'
     assert lead_bot.author_url_from_source('Kwork') is None
 finally:
-    lead_bot.BOT_TOKEN,lead_bot.CHAT_ID,lead_bot.BOT_SEND_RETRIES,lead_bot.urllib.request.urlopen,lead_bot.time.sleep=old
+    lead_bot.BOT_TOKEN,lead_bot.CHAT_ID,lead_bot.BOT_SEND_RETRIES,lead_bot.ENABLE_FEEDBACK,lead_bot.urllib.request.urlopen,lead_bot.time.sleep=old
 
 print('NOTIFY_TEST_OK')

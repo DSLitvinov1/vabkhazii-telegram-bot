@@ -55,6 +55,7 @@ jobs:
           python test_web.py
           python test_market.py
           python test_notify.py
+          python test_feedback.py
           python test_config.py
           python test_chat_filter.py
           python test_pending.py
@@ -80,6 +81,7 @@ jobs:
           DELIVERY_MAX_AGE_HOURS: "24"
           PENDING_LIMIT: "500"
           DELIVERY_ENABLED: "1"
+          ENABLE_FEEDBACK: "0"
           RUN_INTERVAL_MINUTES: "10"
           FORCE_RUN: ${{ inputs.force_logolead || '0' }}
           DISCOVERY_INTERVAL_MINUTES: "360"
