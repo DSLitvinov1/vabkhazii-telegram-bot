@@ -77,6 +77,7 @@ if UNIT_TEST_MODE:
     TG_SESSION = ""
     LEADS_BOT_TOKEN = "unit-test"
     LEADS_CHAT_ID = "0"
+    FALLBACK_BOT_TOKEN = ""
 else:
     _api_id_raw = require_env("TG_API_ID")
     if not _api_id_raw.isdigit():
@@ -98,6 +99,7 @@ else:
 
     LEADS_BOT_TOKEN = require_env("LEADS_BOT_TOKEN")
     LEADS_CHAT_ID = require_env("LEADS_CHAT_ID")
+    FALLBACK_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
 # Ручной тестовый режим из GitHub Actions.
 # В TEST_MODE бот НЕ ищет лиды и НЕ изменяет историю/антидубли.
@@ -922,12 +924,8 @@ def update_chat_cursor(state, entity, source_kind, message_id):
 # BOT API
 # =========================================================
 
-def bot_api(method, data, attempts=4):
-    """
-    Telegram Bot API with bounded retries for temporary network errors,
-    HTTP 429 rate limits and transient 5xx responses.
-    """
-    url = f"https://api.telegram.org/bot{LEADS_BOT_TOKEN}/{method}"
+def _bot_api_with_token(token, method, data, attempts=4):
+    url = f"https://api.telegram.org/bot{token}/{method}"
     payload = urllib.parse.urlencode(data).encode("utf-8")
 
     last_error = None
@@ -936,7 +934,7 @@ def bot_api(method, data, attempts=4):
             url,
             data=payload,
             method="POST",
-            headers={"User-Agent": "VAbkhaziiLeads/4.0"},
+            headers={"User-Agent": "VAbkhaziiLeads/4.1"},
         )
 
         try:
@@ -989,6 +987,29 @@ def bot_api(method, data, attempts=4):
             time.sleep(delay)
 
     raise RuntimeError(f"Telegram Bot API failed after retries: {last_error}")
+
+
+def bot_api(method, data, attempts=4):
+    """
+    Send through the dedicated leads bot first. If that bot is blocked by the
+    owner, try the channel bot as a backup delivery path.
+    """
+    tokens = [LEADS_BOT_TOKEN]
+    if FALLBACK_BOT_TOKEN and FALLBACK_BOT_TOKEN != LEADS_BOT_TOKEN:
+        tokens.append(FALLBACK_BOT_TOKEN)
+
+    errors = []
+    for index, token in enumerate(tokens):
+        try:
+            result = _bot_api_with_token(token, method, data, attempts=attempts)
+            if index:
+                print("[BOT API] delivered through fallback bot token")
+            return result
+        except Exception as exc:
+            errors.append(str(exc))
+            print(f"[BOT API] delivery path {index + 1} failed: {exc}")
+
+    raise RuntimeError("All Telegram bot delivery paths failed: " + " | ".join(errors))
 
 
 def send_private_message(text, reply_to_message_id=None, parse_html=True):
@@ -2650,25 +2671,99 @@ def fetch_mojeek_items(query, source):
     return _extract_mojeek_items(page_html, source)
 
 
+def fetch_bing_rss_items(query, source):
+    """
+    Public Bing RSS result feed used as a fallback when an HTML search engine
+    blocks GitHub runners. No login, API key or protected-page bypass is used.
+    """
+    params = {
+        "q": query,
+        "format": "rss",
+        "setlang": "ru",
+    }
+    url = "https://www.bing.com/search?" + urllib.parse.urlencode(params)
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 VAbkhaziiLeadMonitor/1.0",
+            "Accept": "application/rss+xml,application/xml,text/xml,*/*",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.5",
+        },
+        method="GET",
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=EXTERNAL_HTTP_TIMEOUT_SECONDS,
+    ) as response:
+        raw = response.read(1_500_000)
+
+    root = ET.fromstring(raw)
+    items = []
+    seen = set()
+    for node in root.findall(".//item"):
+        title = normalize(node.findtext("title") or "")
+        link = normalize(node.findtext("link") or "")
+        description = clean_html_fragment(node.findtext("description") or "")
+        if not link or not _source_url_allowed(source, link):
+            continue
+        if link in seen:
+            continue
+
+        text = normalize(" ".join(part for part in [title, description] if part))
+        if len(text) < 8:
+            continue
+
+        seen.add(link)
+        items.append({"url": link, "text": text[:2200]})
+        if len(items) >= EXTERNAL_MAX_ITEMS_PER_SOURCE:
+            break
+
+    return items
+
+
 def fetch_search_index_items(source):
-    """Ищет страницы площадки через публичную HTML-выдачу Mojeek."""
+    """
+    Search-index discovery with two independent public transports:
+    Mojeek HTML first, then Bing RSS as a fallback.
+    """
     merged = {}
     queries = source.get("search_queries") or []
-    errors = 0
+    failed_queries = 0
 
     for query in queries:
-        print(f"[MOJEEK] {source['name']}: {query}")
+        found = []
+        mojeek_error = None
+
+        print(f"[SEARCH INDEX/MOJEEK] {source['name']}: {query}")
         try:
             found = fetch_mojeek_items(query, source)
-            print(f"[MOJEEK RESULT] {source['name']}: {len(found)} item(s)")
-            for item in found:
-                merged[item["url"]] = item
+            print(
+                f"[SEARCH INDEX/MOJEEK RESULT] {source['name']}: "
+                f"{len(found)} item(s)"
+            )
         except Exception as exc:
-            errors += 1
-            print(f"[MOJEEK WARNING] {source['name']}: {exc}")
+            mojeek_error = exc
+            print(f"[SEARCH INDEX/MOJEEK WARNING] {source['name']}: {exc}")
 
-    if queries and errors == len(queries):
-        raise RuntimeError("all Mojeek queries failed")
+        if not found:
+            print(f"[SEARCH INDEX/BING RSS] {source['name']}: {query}")
+            try:
+                found = fetch_bing_rss_items(query, source)
+                print(
+                    f"[SEARCH INDEX/BING RESULT] {source['name']}: "
+                    f"{len(found)} item(s)"
+                )
+            except Exception as exc:
+                print(f"[SEARCH INDEX/BING WARNING] {source['name']}: {exc}")
+                if mojeek_error is not None:
+                    failed_queries += 1
+
+        for item in found:
+            merged[item["url"]] = item
+
+    if queries and failed_queries == len(queries) and not merged:
+        raise RuntimeError("all search-index queries failed")
 
     return list(merged.values())[:EXTERNAL_MAX_ITEMS_PER_SOURCE]
 
