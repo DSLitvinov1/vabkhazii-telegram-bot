@@ -25,7 +25,7 @@ assert age_word(1.5)=='года'
 reply=draft_reply('Ищу логопеда ребёнку 5 лет, не выговаривает Р, онлайн')
 assert 'Ребёнку 5 лет' in reply
 assert 'возраст ребёнка' not in reply
-assert 'онлайн-формате' in reply
+assert 'занятиям онлайн' in reply
 market=draft_market_reply('Нужен логопед ребёнку 5 лет, не выговаривает Р')
-assert 'Готов(а) помочь' in market and '5 лет' in market
+assert 'Могу помочь' in market and '5 лет' in market
 print('REPLY_OK')
