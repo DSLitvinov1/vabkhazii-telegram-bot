@@ -46,8 +46,31 @@ jobs:
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
         run: |
-          python -c "import os,sys; names=['TG_API_ID','TG_API_HASH','TG_SESSION','LEADS_BOT_TOKEN','LEADS_CHAT_ID']; missing=[n for n in names if not os.environ.get(n,'').strip()]; print('Required secrets are present' if not missing else 'Missing secrets: '+','.join(missing)); sys.exit(1 if missing else 0)"
-          python -c "import os,sys; v=os.environ['TG_API_ID'].strip(); print('TG_API_ID format OK' if v.isdigit() else 'TG_API_ID must contain digits only'); sys.exit(0 if v.isdigit() else 1)"
+          python - <<'PY'
+          import os
+          import sys
+
+          names = [
+              "TG_API_ID",
+              "TG_API_HASH",
+              "TG_SESSION",
+              "LEADS_BOT_TOKEN",
+              "LEADS_CHAT_ID",
+          ]
+          missing = [name for name in names if not os.environ.get(name, "").strip()]
+          if missing:
+              print("Missing secrets:", ", ".join(missing))
+              sys.exit(1)
+
+          api_id = os.environ["TG_API_ID"].strip()
+          if not api_id.isdigit():
+              print("TG_API_ID must contain digits only")
+              sys.exit(1)
+
+          print("Required secrets are present")
+          print("TG_API_ID format OK")
+          print("TG_SESSION length:", len(os.environ["TG_SESSION"].strip()))
+          PY
 
       - name: Check VAbkhazii lead bot syntax
         run: python -m py_compile lead_bot.py
