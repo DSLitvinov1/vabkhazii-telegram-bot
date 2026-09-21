@@ -10,6 +10,7 @@ API_HASH=os.environ['TG_API_HASH']
 BOT_TOKEN=os.environ['LEADS_BOT_TOKEN']
 CHAT_ID=os.environ['LEADS_CHAT_ID']
 PUBLIC_KEY=os.environ['ENCRYPTION_PUBLIC_KEY']
+TWOFA_PASSWORD=os.environ.get('TG_2FA_PASSWORD','')
 
 def send_text(text):
     requests.post(
@@ -73,9 +74,13 @@ async def main():
                 print('QR_REFRESHED=1',flush=True)
                 continue
             except SessionPasswordNeededError:
-                print('SESSION_RENEW_2FA_REQUIRED=1',flush=True)
-                send_text('LogoLead: QR подтверждён, но в Telegram включён облачный пароль 2FA. Для завершения потребуется ещё один безопасный шаг.')
-                raise
+                if not TWOFA_PASSWORD:
+                    delete_message(qr_message_id)
+                    print('SESSION_RENEW_2FA_REQUIRED=1',flush=True)
+                    send_text('LogoLead: QR подтверждён, но включён облачный пароль Telegram 2FA. Добавьте его как временный GitHub Secret TG_2FA_PASSWORD и повторите обновление. Пароль в чат не отправляйте.')
+                    return
+                await client.sign_in(password=TWOFA_PASSWORD)
+                break
         delete_message(qr_message_id)
         session=client.session.save()
         print('SESSION_RENEW_OK=1',flush=True)

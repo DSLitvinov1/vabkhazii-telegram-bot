@@ -27,5 +27,6 @@ jobs:
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
+          TG_2FA_PASSWORD: ${{ secrets.TG_2FA_PASSWORD }}
           ENCRYPTION_PUBLIC_KEY: ${{ inputs.encryption_public_key }}
         run: python logolead/renew_session.py
