@@ -171,12 +171,26 @@ def chat_allowed(chat):
     return True
 
 
-async def sender_allowed(message):
+PROVIDER_SENDER_MARKERS=('logoped','defektolog','speechtherapist','speech_therapist','логопед','дефектолог')
+
+async def sender_info(message):
     try:
         sender=await message.get_sender()
     except Exception:
-        return True
-    return not (isinstance(sender,User) and getattr(sender,'bot',False))
+        return True,'',''
+    if isinstance(sender,User) and getattr(sender,'bot',False):
+        return False,'','сообщение бота'
+    username=(getattr(sender,'username',None) or '').strip()
+    first=(getattr(sender,'first_name',None) or '').strip()
+    last=(getattr(sender,'last_name',None) or '').strip()
+    identity=' '.join(x for x in (username,first,last) if x).lower()
+    if any(marker in identity for marker in PROVIDER_SENDER_MARKERS):
+        return False,'','профиль специалиста'
+    return True,('@'+username if username else ''),''
+
+def telegram_source(title,author=''):
+    base=f'Telegram: {title}'
+    return base+(f' · автор {author}' if author else '')
 
 
 def pending_to_candidate(item,cutoff,sent_keys):
@@ -402,15 +416,16 @@ async def main():
                     reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                     reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
-                if not await sender_allowed(message):
-                    reject_counts['сообщение бота']=reject_counts.get('сообщение бота',0)+1
+                sender_ok,author,sender_reason=await sender_info(message)
+                if not sender_ok:
+                    reject_counts[sender_reason]=reject_counts.get(sender_reason,0)+1
                     continue
                 url=f'https://t.me/{username}/{message.id}' if username else ''
                 sent_key=delivery_key(url,message.message)
                 if sent_key in sent_keys:
                     continue
                 stats['global_candidates']+=1
-                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title}',key,sent_key))
+                found.append((value,message.date,message.message,url,reasons,telegram_source(title,author),key,sent_key))
         except FloodWaitError as exc:
             if exc.seconds<=60:
                 await asyncio.sleep(exc.seconds+1)
@@ -471,15 +486,16 @@ async def main():
                     reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                     reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
-                if not await sender_allowed(message):
-                    reject_counts['сообщение бота']=reject_counts.get('сообщение бота',0)+1
+                sender_ok,author,sender_reason=await sender_info(message)
+                if not sender_ok:
+                    reject_counts[sender_reason]=reject_counts.get(sender_reason,0)+1
                     continue
                 url=f'https://t.me/{username}/{message.id}'
                 sent_key=delivery_key(url,message.message)
                 if sent_key in sent_keys:
                     continue
                 stats['group_candidates']+=1
-                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title or username}',key,sent_key))
+                found.append((value,message.date,message.message,url,reasons,telegram_source(title or username,author),key,sent_key))
             if newest_id>min_id:
                 group_last_ids[username]=newest_id
             if min_id==0:
@@ -530,15 +546,16 @@ async def main():
                     reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                     reject_counts[reason]=reject_counts.get(reason,0)+1
                     continue
-                if not await sender_allowed(message):
-                    reject_counts['сообщение бота']=reject_counts.get('сообщение бота',0)+1
+                sender_ok,author,sender_reason=await sender_info(message)
+                if not sender_ok:
+                    reject_counts[sender_reason]=reject_counts.get(sender_reason,0)+1
                     continue
                 url=f'https://t.me/{username}/{message.id}'
                 sent_key=delivery_key(url,message.message)
                 if sent_key in sent_keys:
                     continue
                 stats['backfill_candidates']+=1
-                found.append((value,message.date,message.message,url,reasons,f'Telegram: {title}',key,sent_key))
+                found.append((value,message.date,message.message,url,reasons,telegram_source(title,author),key,sent_key))
             if hit_cutoff or iterated<BACKFILL_SCAN_LIMIT or oldest_id>=start_id:
                 group_backfill_ids.pop(username,None)
             else:
@@ -587,15 +604,16 @@ async def main():
                             reason=reasons[0] if reasons else f'score<{MIN_SCORE}'
                             reject_counts[reason]=reject_counts.get(reason,0)+1
                             continue
-                        if not await sender_allowed(message):
-                            reject_counts['сообщение бота']=reject_counts.get('сообщение бота',0)+1
+                        sender_ok,author,sender_reason=await sender_info(message)
+                        if not sender_ok:
+                            reject_counts[sender_reason]=reject_counts.get(sender_reason,0)+1
                             continue
                         url=f'https://t.me/{username}/{message.id}'
                         sent_key=delivery_key(url,message.message)
                         if sent_key in sent_keys:
                             continue
                         stats['deep_candidates']+=1
-                        found.append((value,message.date,message.message,url,reasons,f'Telegram: {title or username}',key,sent_key))
+                        found.append((value,message.date,message.message,url,reasons,telegram_source(title or username,author),key,sent_key))
                 except FloodWaitError as exc:
                     if exc.seconds<=60:
                         await asyncio.sleep(exc.seconds+1)
