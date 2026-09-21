@@ -26,7 +26,9 @@ assert '@logopedutkina' not in logo
 assert 'python test_quality.py' in logo
 assert 'python test_notify.py' in logo
 assert 'python test_target.py' in logo
-assert 'group: logolead' in logo
+assert 'group: telegram-user-session' in logo
+assert 'group: telegram-user-session' in legacy
+assert 'group: telegram-user-session' in target
 
 assert 'name: VAbkhazii Leads Bot' in legacy
 assert 'Run LogoLead' not in legacy

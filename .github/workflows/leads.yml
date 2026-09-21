@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
-      group: vabkhazii-leads
+      group: telegram-user-session
       cancel-in-progress: false
     steps:
       - name: Download repository

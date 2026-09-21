@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
-      group: logolead
+      group: telegram-user-session
       cancel-in-progress: false
     steps:
       - name: Download repository
