@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -821,13 +822,22 @@ def load_state():
 
 
 def save_state(state):
+    """
+    Atomically persists monitoring state.
+
+    Writing through a temporary file prevents a partially-written state.json
+    if a GitHub runner is interrupted between write and rename.
+    """
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     state["seen"] = list(dict.fromkeys(state.get("seen", [])))[-3000:]
-    state["external_seen"] = state.get("external_seen", [])[-7000:]
-    STATE_FILE.write_text(
+    state["external_seen"] = list(dict.fromkeys(state.get("external_seen", [])))[-7000:]
+
+    tmp_file = STATE_FILE.with_suffix(".json.tmp")
+    tmp_file.write_text(
         json.dumps(state, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    tmp_file.replace(STATE_FILE)
 
 
 def _parse_state_time(value):
@@ -888,23 +898,73 @@ def update_chat_cursor(state, entity, source_kind, message_id):
 # BOT API
 # =========================================================
 
-def bot_api(method, data):
+def bot_api(method, data, attempts=4):
+    """
+    Telegram Bot API with bounded retries for temporary network errors,
+    HTTP 429 rate limits and transient 5xx responses.
+    """
     url = f"https://api.telegram.org/bot{LEADS_BOT_TOKEN}/{method}"
     payload = urllib.parse.urlencode(data).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=payload,
-        method="POST",
-        headers={"User-Agent": "VAbkhaziiLeads/3.0"},
-    )
 
-    with urllib.request.urlopen(request, timeout=30) as response:
-        result = json.loads(response.read().decode("utf-8"))
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        request = urllib.request.Request(
+            url,
+            data=payload,
+            method="POST",
+            headers={"User-Agent": "VAbkhaziiLeads/4.0"},
+        )
 
-    if not result.get("ok"):
-        raise RuntimeError(f"Telegram Bot API error: {result}")
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                result = json.loads(response.read().decode("utf-8"))
 
-    return result
+            if result.get("ok"):
+                return result
+
+            retry_after = (
+                result.get("parameters", {}).get("retry_after")
+                if isinstance(result, dict)
+                else None
+            )
+            if retry_after and attempt < attempts:
+                delay = min(max(int(retry_after), 1), 30)
+                print(f"[BOT API] rate limited; retrying in {delay}s")
+                import time
+                time.sleep(delay)
+                continue
+
+            raise RuntimeError(f"Telegram Bot API error: {result}")
+
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+
+            retryable = exc.code == 429 or 500 <= exc.code <= 599
+            if not retryable or attempt >= attempts:
+                raise RuntimeError(
+                    f"Telegram Bot API HTTP {exc.code}: {body or exc.reason}"
+                ) from exc
+
+            delay = min(2 ** (attempt - 1), 8)
+            print(f"[BOT API] HTTP {exc.code}; retry {attempt}/{attempts} in {delay}s")
+            import time
+            time.sleep(delay)
+
+        except urllib.error.URLError as exc:
+            last_error = exc
+            if attempt >= attempts:
+                raise RuntimeError(f"Telegram Bot API network error: {exc}") from exc
+            delay = min(2 ** (attempt - 1), 8)
+            print(f"[BOT API] network error; retry {attempt}/{attempts} in {delay}s")
+            import time
+            time.sleep(delay)
+
+    raise RuntimeError(f"Telegram Bot API failed after retries: {last_error}")
 
 
 def send_private_message(text, reply_to_message_id=None, parse_html=True):
@@ -3396,15 +3456,39 @@ async def joined_chat_scan_worker(client, state, cutoff, self_user_id, stats):
     return candidates
 
 
+async def _safe_search_worker(label, coroutine):
+    """
+    Keeps one broken source from aborting the whole monitoring cycle.
+    Authentication/session failures still surface before workers are started.
+    """
+    try:
+        return await coroutine
+    except Exception as exc:
+        print(f"[{label} ERROR] {type(exc).__name__}: {exc}")
+        return {}
+
+
 async def search_public_messages(client, state, self_user_id):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
     stats = new_filter_stats()
 
     global_results, chat_results, discovered_results, joined_results = await asyncio.gather(
-        global_search_worker(client, state, cutoff, self_user_id, stats),
-        chat_scan_worker(client, state, cutoff, self_user_id, stats),
-        discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats),
-        joined_chat_scan_worker(client, state, cutoff, self_user_id, stats),
+        _safe_search_worker(
+            "GLOBAL",
+            global_search_worker(client, state, cutoff, self_user_id, stats),
+        ),
+        _safe_search_worker(
+            "WHITELIST",
+            chat_scan_worker(client, state, cutoff, self_user_id, stats),
+        ),
+        _safe_search_worker(
+            "DISCOVERED",
+            discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats),
+        ),
+        _safe_search_worker(
+            "JOINED",
+            joined_chat_scan_worker(client, state, cutoff, self_user_id, stats),
+        ),
     )
 
     candidates = {}
@@ -3528,7 +3612,27 @@ async def async_main():
 
     state = load_state()
     client = TelegramClient(StringSession(TG_SESSION), TG_API_ID, TG_API_HASH)
-    await client.connect()
+
+    connected = False
+    last_connect_error = None
+    for attempt in range(1, 4):
+        try:
+            await client.connect()
+            connected = True
+            break
+        except Exception as exc:
+            last_connect_error = exc
+            print(
+                f"[TELEGRAM CONNECT] attempt {attempt}/3 failed: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            if attempt < 3:
+                await asyncio.sleep(2 ** (attempt - 1))
+
+    if not connected:
+        raise RuntimeError(
+            f"Could not connect to Telegram after 3 attempts: {last_connect_error}"
+        )
 
     try:
         if not await client.is_user_authorized():
@@ -3540,11 +3644,17 @@ async def async_main():
         leads, planning, stats = await search_public_messages(client, state, getattr(me, "id", None))
 
         # Внешние форумы/сайты проверяются отдельным более редким циклом.
-        external_direct, external_planning = await asyncio.to_thread(
-            scan_external_web_sources,
-            state,
-            stats,
-        )
+        # Их временная недоступность не должна ронять Telegram-мониторинг.
+        try:
+            external_direct, external_planning = await asyncio.to_thread(
+                scan_external_web_sources,
+                state,
+                stats,
+            )
+        except Exception as exc:
+            print(f"[EXTERNAL WEB ERROR] {type(exc).__name__}: {exc}")
+            external_direct, external_planning = [], []
+
         leads.extend(external_direct)
         planning.extend(external_planning)
         leads.sort(
@@ -3580,6 +3690,10 @@ async def async_main():
                 for seen_id in lead.get("seen_ids", [lead["id"]]):
                     state.setdefault("seen", []).append(seen_id)
 
+                # Фиксируем антидубль сразу после успешной отправки карточки.
+                # Если runner позже оборвётся, уже доставленный лид не придёт повторно.
+                save_state(state)
+
                 # Черновик ответа отправляем отдельным сообщением без HTML,
                 # чтобы его можно было скопировать целиком одним нажатием.
                 draft = make_reply(
@@ -3610,6 +3724,7 @@ async def async_main():
                 for item in planning:
                     for seen_id in item.get("seen_ids", [item["id"]]):
                         state.setdefault("seen", []).append(seen_id)
+                save_state(state)
             except Exception as exc:
                 print("Planning digest warning:", exc)
 
