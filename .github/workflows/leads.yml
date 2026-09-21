@@ -75,7 +75,7 @@ jobs:
             exit 0
           fi
           MESSAGE="⚠️ VAbkhazii Leads Bot остановился с ошибкой.
-Запуск: #$RUN_NUMBER
-Проверь GitHub Actions:
-$RUN_URL"
+          Запуск: #$RUN_NUMBER
+          Проверь GitHub Actions:
+          $RUN_URL"
           curl --silent --show-error --fail-with-body --request POST "https://api.telegram.org/bot$LEADS_BOT_TOKEN/sendMessage" --data-urlencode "chat_id=$LEADS_CHAT_ID" --data-urlencode "text=$MESSAGE"
