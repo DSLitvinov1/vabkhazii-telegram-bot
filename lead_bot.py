@@ -1073,6 +1073,35 @@ def send_private_message(text, reply_to_message_id=None, parse_html=True):
     return result.get("result", {}).get("message_id")
 
 
+async def send_private_message_resilient(client, text, parse_html=True):
+    """
+    Primary delivery goes to the dedicated lead bot chat.
+    If both bot tokens cannot reach the owner but the Telegram user session is
+    healthy, deliver the same notification to Saved Messages instead.
+    """
+    try:
+        return send_private_message(text, parse_html=parse_html)
+    except Exception as bot_exc:
+        print(f"[DELIVERY] bot delivery failed: {bot_exc}")
+
+    if client is None:
+        raise RuntimeError("No Telegram delivery path is currently available")
+
+    try:
+        message = await client.send_message(
+            "me",
+            text,
+            parse_mode="html" if parse_html else None,
+            link_preview=False,
+        )
+        print("[DELIVERY] delivered through Telegram Saved Messages fallback")
+        return getattr(message, "id", None)
+    except Exception as user_exc:
+        raise RuntimeError(
+            f"Bot delivery failed and Saved Messages fallback failed: {user_exc}"
+        ) from user_exc
+
+
 # =========================================================
 # TEXT HELPERS
 # =========================================================
@@ -3886,7 +3915,8 @@ async def async_main():
         SESSION_WARNING_INTERVAL_MINUTES,
     ):
         try:
-            send_private_message(
+            await send_private_message_resilient(
+                client,
                 "⚠️ <b>VAbkhazii Leads работает в резервном режиме</b>\n\n"
                 "Поиск в Telegram временно недоступен из-за TG_SESSION. "
                 "Внешние публичные источники продолжают проверяться.\n\n"
@@ -3923,7 +3953,7 @@ async def async_main():
                     lead["classification"],
                     chain_count=lead.get("chain_count", 1),
                 )
-            send_private_message(card)
+            await send_private_message_resilient(client, card)
             for seen_id in lead.get("seen_ids", [lead["id"]]):
                 state.setdefault("seen", []).append(seen_id)
 
@@ -3937,7 +3967,11 @@ async def async_main():
             )
             if draft:
                 try:
-                    send_private_message(draft, parse_html=False)
+                    await send_private_message_resilient(
+                        client,
+                        draft,
+                        parse_html=False,
+                    )
                 except Exception as draft_exc:
                     print("Draft send warning:", draft_exc)
 
@@ -3949,7 +3983,7 @@ async def async_main():
     digest = make_planning_digest(planning)
     if digest:
         try:
-            send_private_message(digest)
+            await send_private_message_resilient(client, digest)
             planning_sent = len(planning)
             for item in planning:
                 for seen_id in item.get("seen_ids", [item["id"]]):
