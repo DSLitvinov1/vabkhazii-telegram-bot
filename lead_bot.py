@@ -174,6 +174,7 @@ MY_CHATS_SCAN_LIMIT = 220
 # открытые страницы без авторизации и без обхода ограничений доступа.
 EXTERNAL_WEB_ENABLED = True
 EXTERNAL_SCAN_INTERVAL_MINUTES = 30
+EXTERNAL_SEARCH_ENGINE_VERSION = "dual_search_v2"
 EXTERNAL_MAX_ITEMS_PER_SOURCE = 40
 EXTERNAL_HTTP_TIMEOUT_SECONDS = 20
 
@@ -312,6 +313,12 @@ COMMERCIAL_CHAT_MARKERS = [
     "трансфер", "экскурсии", "экскурсия", "гид", "такси",
     "аренда авто", "аренда машин", "бронирование", "туроператор",
     "турагентство", "туры по абхазии", "автопарк",
+]
+
+IRRELEVANT_CHAT_MARKERS = [
+    "недвижимость", "барахолка", "магазины", "магазин абхазии",
+    "куплю продам", "куплю/продам", "вакансии", "работа в абхазии",
+    "мухомор", "грибы", "крипто", "ставки", "казино",
 ]
 
 # Маркеры общих туристических сообществ СНГ, которые можно сканировать даже
@@ -1507,6 +1514,8 @@ def is_discovery_candidate_chat(chat):
 
     if any(marker in combined for marker in COMMERCIAL_CHAT_MARKERS):
         return False
+    if any(marker in combined for marker in IRRELEVANT_CHAT_MARKERS):
+        return False
 
     abkhazia_markers = [
         "абхаз", "гагр", "пицунд", "сухум", "афон", "гудаут",
@@ -1550,8 +1559,10 @@ def is_joined_tourist_chat(chat):
 
     combined = f"{title} {username}".lower()
 
-    # Коммерческие витрины гидов/такси/турфирм не сканируем как клиентские чаты.
+    # Коммерческие витрины и явно нерелевантные сообщества не сканируем.
     if any(marker in combined for marker in COMMERCIAL_CHAT_MARKERS):
+        return False
+    if any(marker in combined for marker in IRRELEVANT_CHAT_MARKERS):
         return False
 
     abkhazia_markers = [
@@ -1567,13 +1578,20 @@ def is_joined_tourist_chat(chat):
         "эсто-садок", "лазаревск", "лоо", "дагомыс", "туапсе",
         "геленджик", "новороссийск", "анапа", "краснодар",
     ]
-    discussion_markers = [
-        "чат", "форум", "попут", "турист", "travel", "путеш",
-        "отдых", "поездк", "дорог", "trip",
+    strong_travel_markers = [
+        "попут", "турист", "travel", "путеш", "отдых", "поездк",
+        "дорог", "trip", "маршрут",
     ]
-    if (
-        any(marker in combined for marker in regional_markers)
-        and any(marker in combined for marker in discussion_markers)
+    known_regional_chat = any(
+        phrase in combined
+        for phrase in [
+            "сочи чат", "адлер чат", "сириус чат",
+            "красная поляна чат", "роза хутор чат",
+        ]
+    )
+    if any(marker in combined for marker in regional_markers) and (
+        known_regional_chat
+        or any(marker in combined for marker in strong_travel_markers)
     ):
         return True
 
@@ -2844,6 +2862,8 @@ def fetch_search_index_items(source):
 def should_scan_external_now(state):
     if not EXTERNAL_WEB_ENABLED:
         return False
+    if state.get("external_search_engine_version") != EXTERNAL_SEARCH_ENGINE_VERSION:
+        return True
     last = state.get("external_last_scan")
     if not last:
         return True
@@ -2912,7 +2932,7 @@ def scan_external_web_sources(state, stats):
     # Search-index sources use a dual Mojeek + Bing RSS transport.
     # A version bump rebuilds the baseline once, preventing old indexed pages
     # from being emitted as fresh leads after a search-layer change.
-    search_engine_version = "dual_search_v2"
+    search_engine_version = EXTERNAL_SEARCH_ENGINE_VERSION
     if state.get("external_search_engine_version") != search_engine_version:
         for source in EXTERNAL_SOURCES:
             if source.get("access") == "search_index":
