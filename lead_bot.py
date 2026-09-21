@@ -32,33 +32,58 @@ def require_env(name):
 
 def normalize_tg_session(raw_value):
     """
-    Makes TG_SESSION tolerant to accidental line wraps / quotes when copied
-    from PowerShell into GitHub Secrets, while still validating it with
-    Telethon before any network connection is attempted.
+    Recover a Telethon StringSession even if GitHub Secret accidentally
+    contains the surrounding PowerShell output, line wraps or separators.
+
+    Telethon v1 StringSession has a deterministic total length:
+    353 chars for IPv4 sessions or 369 chars for IPv6 sessions. Base64
+    padding may include '=', so scanning only [A-Za-z0-9_-] is insufficient.
     """
     raw_value = (raw_value or "").strip().strip('"').strip("'")
     compact = re.sub(r"\s+", "", raw_value)
 
-    chunks = []
-    if compact.startswith("1"):
-        chunks.append(compact)
-    chunks.extend(re.findall(r"1[A-Za-z0-9_-]{200,500}", compact))
-
     tested = set()
-    for chunk in chunks:
-        # First try the whole candidate, then valid-looking prefixes. This
-        # also recovers from an accidentally copied note after the session.
-        lengths = [len(chunk)] + list(range(min(len(chunk), 450), 199, -1))
-        for length in lengths:
-            candidate = chunk[:length]
-            if candidate in tested:
+
+    def try_candidate(candidate):
+        if not candidate or candidate in tested:
+            return None
+        tested.add(candidate)
+        try:
+            StringSession(candidate)
+            return candidate
+        except Exception:
+            return None
+
+    # Fast path: exact secret value.
+    exact = try_candidate(compact)
+    if exact:
+        return exact
+
+    # Telethon v1 format: CURRENT_VERSION='1' plus a 352/368-char
+    # base64-encoded payload. Search every possible embedded session start.
+    for start, char in enumerate(compact):
+        if char != "1":
+            continue
+        for length in (353, 369):
+            end = start + length
+            if end > len(compact):
                 continue
-            tested.add(candidate)
-            try:
-                StringSession(candidate)
-                return candidate
-            except Exception:
-                pass
+            recovered = try_candidate(compact[start:end])
+            if recovered:
+                print(
+                    "[TG_SESSION] recovered valid StringSession from "
+                    "surrounding copied text"
+                )
+                return recovered
+
+    # Compatibility fallback for a future Telethon format: try chunks that
+    # begin with the current version marker, including '=' padding.
+    for match in re.finditer(r"1[A-Za-z0-9_\-=]{200,500}", compact):
+        chunk = match.group(0)
+        for length in range(len(chunk), 199, -1):
+            recovered = try_candidate(chunk[:length])
+            if recovered:
+                return recovered
 
     raise RuntimeError(
         "TG_SESSION is malformed. Update the GitHub secret with the complete "
