@@ -66,16 +66,28 @@ def normalize_tg_session(raw_value):
     )
 
 
-_api_id_raw = require_env("TG_API_ID")
-if not _api_id_raw.isdigit():
-    raise RuntimeError("TG_API_ID must contain digits only")
+UNIT_TEST_MODE = os.environ.get("LEADS_UNIT_TEST", "false").strip().lower() in {
+    "1", "true", "yes", "on"
+}
 
-TG_API_ID = int(_api_id_raw)
-TG_API_HASH = require_env("TG_API_HASH")
-TG_SESSION = normalize_tg_session(require_env("TG_SESSION"))
+if UNIT_TEST_MODE:
+    # Unit tests exercise parsing/scoring only and never open Telegram.
+    TG_API_ID = 1
+    TG_API_HASH = "unit-test"
+    TG_SESSION = ""
+    LEADS_BOT_TOKEN = "unit-test"
+    LEADS_CHAT_ID = "0"
+else:
+    _api_id_raw = require_env("TG_API_ID")
+    if not _api_id_raw.isdigit():
+        raise RuntimeError("TG_API_ID must contain digits only")
 
-LEADS_BOT_TOKEN = require_env("LEADS_BOT_TOKEN")
-LEADS_CHAT_ID = require_env("LEADS_CHAT_ID")
+    TG_API_ID = int(_api_id_raw)
+    TG_API_HASH = require_env("TG_API_HASH")
+    TG_SESSION = normalize_tg_session(require_env("TG_SESSION"))
+
+    LEADS_BOT_TOKEN = require_env("LEADS_BOT_TOKEN")
+    LEADS_CHAT_ID = require_env("LEADS_CHAT_ID")
 
 # Ручной тестовый режим из GitHub Actions.
 # В TEST_MODE бот НЕ ищет лиды и НЕ изменяет историю/антидубли.
