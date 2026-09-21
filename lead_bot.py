@@ -84,7 +84,17 @@ else:
 
     TG_API_ID = int(_api_id_raw)
     TG_API_HASH = require_env("TG_API_HASH")
-    TG_SESSION = normalize_tg_session(require_env("TG_SESSION"))
+
+    _tg_session_raw = require_env("TG_SESSION")
+    try:
+        TG_SESSION = normalize_tg_session(_tg_session_raw)
+        TG_SESSION_CONFIG_ERROR = None
+    except Exception as exc:
+        # Do not kill the whole monitor because of one broken Telegram user
+        # session. External public sources can keep working until the secret
+        # is repaired.
+        TG_SESSION = None
+        TG_SESSION_CONFIG_ERROR = str(exc)
 
     LEADS_BOT_TOKEN = require_env("LEADS_BOT_TOKEN")
     LEADS_CHAT_ID = require_env("LEADS_CHAT_ID")
@@ -111,6 +121,7 @@ CHAIN_WINDOW_HOURS = 6
 GLOBAL_SEARCH_INTERVAL_MINUTES = 30
 DISCOVERED_SCAN_INTERVAL_MINUTES = 15
 DISCOVERY_REFRESH_INTERVAL_MINUTES = 360
+SESSION_WARNING_INTERVAL_MINUTES = 360
 
 
 # Автопоиск новых публичных туристических групп Telegram.
@@ -830,6 +841,7 @@ def load_state():
     state.setdefault("discovered_last_scan", None)
     state.setdefault("discovery_refresh_last_scan", None)
     state.setdefault("discovered_chat_usernames", [])
+    state.setdefault("tg_session_warning_last_sent", None)
     return state
 
 
@@ -3651,131 +3663,173 @@ async def async_main():
         return
 
     state = load_state()
-    client = TelegramClient(StringSession(TG_SESSION), TG_API_ID, TG_API_HASH)
+    leads = []
+    planning = []
+    stats = new_filter_stats()
+    client = None
+    telegram_search_active = False
 
-    connected = False
-    last_connect_error = None
-    for attempt in range(1, 4):
-        try:
-            await client.connect()
-            connected = True
-            break
-        except Exception as exc:
-            last_connect_error = exc
-            print(
-                f"[TELEGRAM CONNECT] attempt {attempt}/3 failed: "
-                f"{type(exc).__name__}: {exc}"
-            )
-            if attempt < 3:
-                await asyncio.sleep(2 ** (attempt - 1))
+    if TG_SESSION:
+        client = TelegramClient(StringSession(TG_SESSION), TG_API_ID, TG_API_HASH)
 
-    if not connected:
-        raise RuntimeError(
-            f"Could not connect to Telegram after 3 attempts: {last_connect_error}"
-        )
-
-    try:
-        if not await client.is_user_authorized():
-            raise RuntimeError("TG_SESSION is not authorized")
-
-        me = await client.get_me()
-        print("Connected as:", getattr(me, "first_name", ""), getattr(me, "username", ""))
-
-        leads, planning, stats = await search_public_messages(client, state, getattr(me, "id", None))
-
-        # Внешние форумы/сайты проверяются отдельным более редким циклом.
-        # Их временная недоступность не должна ронять Telegram-мониторинг.
-        try:
-            external_direct, external_planning = await asyncio.to_thread(
-                scan_external_web_sources,
-                state,
-                stats,
-            )
-        except Exception as exc:
-            print(f"[EXTERNAL WEB ERROR] {type(exc).__name__}: {exc}")
-            external_direct, external_planning = [], []
-
-        leads.extend(external_direct)
-        planning.extend(external_planning)
-        leads.sort(
-            key=lambda item: (item["classification"]["score"], item["date"]),
-            reverse=True,
-        )
-        planning.sort(key=lambda item: item["date"], reverse=True)
-        leads = leads[:MAX_LEADS_PER_RUN]
-        planning = planning[:12]
-
-        print_filter_stats(stats)
-        hot_count = sum(1 for item in leads if item["classification"].get("temperature") == "hot")
-        warm_count = sum(1 for item in leads if item["classification"].get("temperature") == "warm")
-        print(f"Found {len(leads)} direct lead(s): hot={hot_count}, warm={warm_count}")
-        print(f"Found {len(planning)} planning candidate(s)")
-
-        sent = 0
-        for lead in leads:
+        connected = False
+        last_connect_error = None
+        for attempt in range(1, 4):
             try:
-                if lead.get("source_kind") == "external_web":
-                    card = make_external_card(lead)
-                else:
-                    card = make_card(
-                        lead["text"],
-                        lead["chat"],
-                        lead["sender"],
-                        lead["message_id"],
-                        lead["date"],
-                        lead["classification"],
-                        chain_count=lead.get("chain_count", 1),
-                    )
-                card_message_id = send_private_message(card)
-                for seen_id in lead.get("seen_ids", [lead["id"]]):
-                    state.setdefault("seen", []).append(seen_id)
-
-                # Фиксируем антидубль сразу после успешной отправки карточки.
-                # Если runner позже оборвётся, уже доставленный лид не придёт повторно.
-                save_state(state)
-
-                # Черновик ответа отправляем отдельным сообщением без HTML,
-                # чтобы его можно было скопировать целиком одним нажатием.
-                draft = make_reply(
-                    lead["text"],
-                    lead["classification"]["lead_type"],
-                    lead["classification"],
+                await client.connect()
+                connected = True
+                break
+            except Exception as exc:
+                last_connect_error = exc
+                print(
+                    f"[TELEGRAM CONNECT] attempt {attempt}/3 failed: "
+                    f"{type(exc).__name__}: {exc}"
                 )
-                if draft:
-                    try:
-                        # Черновик идёт отдельным обычным сообщением без reply/цитаты.
-                        send_private_message(
-                            draft,
-                            parse_html=False,
-                        )
-                    except Exception as draft_exc:
-                        print("Draft send warning:", draft_exc)
+                if attempt < 3:
+                    await asyncio.sleep(2 ** (attempt - 1))
 
-                sent += 1
-            except Exception as exc:
-                print("Send warning:", exc)
-
-        planning_sent = 0
-        digest = make_planning_digest(planning)
-        if digest:
+        if connected:
             try:
-                send_private_message(digest)
-                planning_sent = len(planning)
-                for item in planning:
-                    for seen_id in item.get("seen_ids", [item["id"]]):
-                        state.setdefault("seen", []).append(seen_id)
-                save_state(state)
+                if not await client.is_user_authorized():
+                    print("[DEGRADED] TG_SESSION exists but is not authorized")
+                else:
+                    me = await client.get_me()
+                    print(
+                        "Connected as:",
+                        getattr(me, "first_name", ""),
+                        getattr(me, "username", ""),
+                    )
+                    leads, planning, stats = await search_public_messages(
+                        client,
+                        state,
+                        getattr(me, "id", None),
+                    )
+                    telegram_search_active = True
             except Exception as exc:
-                print("Planning digest warning:", exc)
+                print(
+                    f"[DEGRADED] Telegram search unavailable: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+        else:
+            print(
+                f"[DEGRADED] Could not connect to Telegram after 3 attempts: "
+                f"{last_connect_error}"
+            )
+    else:
+        print(f"[DEGRADED] Telegram user session disabled: {TG_SESSION_CONFIG_ERROR}")
 
-        save_state(state)
-        print(f"Sent {sent} direct lead(s)")
-        print(f"Planning digest items: {planning_sent}")
-        if sent == 0 and planning_sent == 0:
-            print("No new leads found.")
+    # Внешние форумы/сайты работают независимо от Telegram user-session.
+    try:
+        external_direct, external_planning = await asyncio.to_thread(
+            scan_external_web_sources,
+            state,
+            stats,
+        )
+    except Exception as exc:
+        print(f"[EXTERNAL WEB ERROR] {type(exc).__name__}: {exc}")
+        external_direct, external_planning = [], []
 
-    finally:
-        await client.disconnect()
+    leads.extend(external_direct)
+    planning.extend(external_planning)
+    leads.sort(
+        key=lambda item: (item["classification"]["score"], item["date"]),
+        reverse=True,
+    )
+    planning.sort(key=lambda item: item["date"], reverse=True)
+    leads = leads[:MAX_LEADS_PER_RUN]
+    planning = planning[:12]
+
+    # If the Telegram user session is unavailable, tell the owner at most once
+    # every six hours. The bot remains useful because external public sources
+    # continue to be scanned.
+    if not telegram_search_active and state_interval_due(
+        state.get("tg_session_warning_last_sent"),
+        SESSION_WARNING_INTERVAL_MINUTES,
+    ):
+        try:
+            send_private_message(
+                "⚠️ <b>VAbkhazii Leads работает в резервном режиме</b>\n\n"
+                "Поиск в Telegram временно недоступен из-за TG_SESSION. "
+                "Внешние публичные источники продолжают проверяться.\n\n"
+                "Нужно обновить TG_SESSION в GitHub Secrets.",
+            )
+            mark_state_time(state, "tg_session_warning_last_sent")
+            save_state(state)
+        except Exception as exc:
+            print(f"[DEGRADED WARNING SEND ERROR] {exc}")
+
+    print_filter_stats(stats)
+    hot_count = sum(
+        1 for item in leads if item["classification"].get("temperature") == "hot"
+    )
+    warm_count = sum(
+        1 for item in leads if item["classification"].get("temperature") == "warm"
+    )
+    print(f"Telegram search active: {telegram_search_active}")
+    print(f"Found {len(leads)} direct lead(s): hot={hot_count}, warm={warm_count}")
+    print(f"Found {len(planning)} planning candidate(s)")
+
+    sent = 0
+    for lead in leads:
+        try:
+            if lead.get("source_kind") == "external_web":
+                card = make_external_card(lead)
+            else:
+                card = make_card(
+                    lead["text"],
+                    lead["chat"],
+                    lead["sender"],
+                    lead["message_id"],
+                    lead["date"],
+                    lead["classification"],
+                    chain_count=lead.get("chain_count", 1),
+                )
+            send_private_message(card)
+            for seen_id in lead.get("seen_ids", [lead["id"]]):
+                state.setdefault("seen", []).append(seen_id)
+
+            # Фиксируем антидубль сразу после успешной отправки карточки.
+            save_state(state)
+
+            draft = make_reply(
+                lead["text"],
+                lead["classification"]["lead_type"],
+                lead["classification"],
+            )
+            if draft:
+                try:
+                    send_private_message(draft, parse_html=False)
+                except Exception as draft_exc:
+                    print("Draft send warning:", draft_exc)
+
+            sent += 1
+        except Exception as exc:
+            print("Send warning:", exc)
+
+    planning_sent = 0
+    digest = make_planning_digest(planning)
+    if digest:
+        try:
+            send_private_message(digest)
+            planning_sent = len(planning)
+            for item in planning:
+                for seen_id in item.get("seen_ids", [item["id"]]):
+                    state.setdefault("seen", []).append(seen_id)
+            save_state(state)
+        except Exception as exc:
+            print("Planning digest warning:", exc)
+
+    save_state(state)
+    print(f"Sent {sent} direct lead(s)")
+    print(f"Planning digest items: {planning_sent}")
+    if sent == 0 and planning_sent == 0:
+        print("No new leads found.")
+
+    if client is not None:
+        try:
+            await client.disconnect()
+        except Exception as exc:
+            print(f"[TELEGRAM DISCONNECT WARNING] {exc}")
 
 
 def main():
