@@ -2,12 +2,6 @@ name: VAbkhazii Leads Bot
 
 on:
   workflow_dispatch:
-    inputs:
-      test_mode:
-        description: "Send a test card only (no lead search)"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -52,23 +46,8 @@ jobs:
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
         run: |
-          python - <<'PY'
-          import os
-          required = [
-              "TG_API_ID",
-              "TG_API_HASH",
-              "TG_SESSION",
-              "LEADS_BOT_TOKEN",
-              "LEADS_CHAT_ID",
-          ]
-          missing = [name for name in required if not os.environ.get(name, "").strip()]
-          if missing:
-              raise SystemExit("Missing GitHub secrets: " + ", ".join(missing))
-          if not os.environ["TG_API_ID"].strip().isdigit():
-              raise SystemExit("TG_API_ID must contain digits only")
-          print("Required secrets are present")
-          print("TG_SESSION length:", len(os.environ["TG_SESSION"].strip()))
-          PY
+          python -c "import os,sys; names=['TG_API_ID','TG_API_HASH','TG_SESSION','LEADS_BOT_TOKEN','LEADS_CHAT_ID']; missing=[n for n in names if not os.environ.get(n,'').strip()]; print('Required secrets are present' if not missing else 'Missing secrets: '+','.join(missing)); sys.exit(1 if missing else 0)"
+          python -c "import os,sys; v=os.environ['TG_API_ID'].strip(); print('TG_API_ID format OK' if v.isdigit() else 'TG_API_ID must contain digits only'); sys.exit(0 if v.isdigit() else 1)"
 
       - name: Check VAbkhazii lead bot syntax
         run: python -m py_compile lead_bot.py
@@ -80,11 +59,10 @@ jobs:
           TG_SESSION: ${{ secrets.TG_SESSION }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
-          TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode || false }}
         run: python lead_bot.py
 
       - name: Telegram alert if bot failed
-        if: ${{ failure() }}
+        if: failure()
         continue-on-error: true
         env:
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
@@ -96,12 +74,8 @@ jobs:
             echo "Telegram failure alert skipped: missing bot token or chat id"
             exit 0
           fi
-
           MESSAGE="⚠️ VAbkhazii Leads Bot остановился с ошибкой.
-
 Запуск: #$RUN_NUMBER
-
-Открыть GitHub Actions:
+Проверь GitHub Actions:
 $RUN_URL"
-
-          curl --silent --show-error --fail-with-body             --request POST             "https://api.telegram.org/bot$LEADS_BOT_TOKEN/sendMessage"             --data-urlencode "chat_id=$LEADS_CHAT_ID"             --data-urlencode "text=$MESSAGE"
+          curl --silent --show-error --fail-with-body --request POST "https://api.telegram.org/bot$LEADS_BOT_TOKEN/sendMessage" --data-urlencode "chat_id=$LEADS_CHAT_ID" --data-urlencode "text=$MESSAGE"
