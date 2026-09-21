@@ -1,4 +1,4 @@
-import asyncio, io, json, urllib.error
+import asyncio, io, json, urllib.error, urllib.parse
 import lead_bot
 
 class Response:
@@ -24,8 +24,13 @@ lead_bot.BOT_SEND_RETRIES=1
 lead_bot.urllib.request.urlopen=fake_urlopen
 lead_bot.time.sleep=lambda _:None
 try:
-    asyncio.run(lead_bot.notify('test message'))
+    asyncio.run(lead_bot.notify('test message','https://t.me/test/1'))
     assert len(calls)==2,len(calls)
+    body=urllib.parse.parse_qs(calls[-1].data.decode())
+    assert body['chat_id']==['1']
+    markup=json.loads(body['reply_markup'][0])
+    assert markup['inline_keyboard'][0][0]['url']=='https://t.me/test/1'
+    assert markup['inline_keyboard'][0][0]['text']=='Открыть источник'
 finally:
     lead_bot.BOT_TOKEN,lead_bot.CHAT_ID,lead_bot.BOT_SEND_RETRIES,lead_bot.urllib.request.urlopen,lead_bot.time.sleep=old
 

@@ -1,0 +1,97 @@
+name: LogoLead
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_logolead:
+        description: "Force LogoLead scan now"
+        required: false
+        default: "0"
+  schedule:
+    - cron: "*/5 * * * *"
+
+jobs:
+  leads:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: logolead
+      cancel-in-progress: false
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v7
+
+      - name: Restore LogoLead state
+        uses: actions/cache@v6
+        with:
+          path: logolead/.lead_state
+          key: logolead-${{ github.run_id }}
+          restore-keys: |
+            logolead-
+            vabkhazii-leads-
+
+      - name: Install Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install telethon
+
+      - name: Test LogoLead
+        working-directory: logolead
+        run: |
+          python -m py_compile lead_bot.py classifier.py reply.py card.py sources.py web_sources.py market_sources.py target_ready.py
+          python test_reply.py
+          python test_classifier.py
+          python test_web.py
+          python test_market.py
+          python test_notify.py
+          python test_config.py
+          python test_chat_filter.py
+          python test_pending.py
+          python test_state.py
+          python test_sources.py
+          python test_workflow.py
+          python test_target.py
+          python test_full.py
+
+      - name: Run LogoLead
+        working-directory: logolead
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+          LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
+          MIN_SCORE: "50"
+          MAX_AGE_HOURS: "72"
+          MAX_LEADS_PER_RUN: "1"
+          DELIVERY_MAX_AGE_HOURS: "24"
+          PENDING_LIMIT: "500"
+          DELIVERY_ENABLED: "1"
+          RUN_INTERVAL_MINUTES: "10"
+          FORCE_RUN: ${{ inputs.force_logolead || '0' }}
+          DISCOVERY_INTERVAL_MINUTES: "360"
+          MAX_DISCOVERED_GROUPS: "30"
+          GROUP_CACHE_LIMIT: "120"
+          GROUP_SCAN_LIMIT: "80"
+          INITIAL_GROUP_SCAN_LIMIT: "180"
+          BACKFILL_GROUPS_PER_RUN: "1"
+          BACKFILL_SCAN_LIMIT: "120"
+          DEEP_GROUP_INTERVAL_MINUTES: "180"
+          DEEP_GROUP_SCAN_COUNT: "6"
+          DEEP_GROUP_SEARCH_LIMIT: "15"
+          ENABLE_MARKETS: "1"
+          MARKET_INTERVAL_MINUTES: "30"
+          ENABLE_WEB: "1"
+          WEB_INTERVAL_MINUTES: "60"
+          SEND_STATUS: "0"
+          STATUS_INTERVAL_HOURS: "24"
+          BOT_SEND_RETRIES: "2"
+          BOT_RETRY_MAX_SECONDS: "30"
+          DISPLAY_TZ_OFFSET: "3"
+        run: python lead_bot.py

@@ -245,15 +245,20 @@ def select_delivery_candidates(items,now=None):
     stale_count=len(items)-len(deliverable)
     return deliverable[:MAX_LEADS_PER_RUN],deliverable[MAX_LEADS_PER_RUN:],stale_count
 
-async def notify(text):
+async def notify(text,source_url=None):
     if not BOT_TOKEN or not CHAT_ID:
         print('DRY_SEND',text.encode('ascii','backslashreplace').decode()[:400])
         return
-    data=urllib.parse.urlencode({
+    payload={
         'chat_id':CHAT_ID,
         'text':text,
         'disable_web_page_preview':'true',
-    }).encode()
+    }
+    if source_url:
+        payload['reply_markup']=json.dumps({
+            'inline_keyboard':[[{'text':'Открыть источник','url':source_url}]]
+        },ensure_ascii=False)
+    data=urllib.parse.urlencode(payload).encode()
     url=f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
 
     def send():
@@ -708,7 +713,7 @@ async def main():
         for value,published,text,url,reasons,source,seen_key,sent_key in batch:
             card=build(text,url,source,value,reasons,format_published(published))
             try:
-                await notify(card)
+                await notify(card,url)
                 sent_keys[sent_key]=None
                 sent+=1
             except Exception as exc:
