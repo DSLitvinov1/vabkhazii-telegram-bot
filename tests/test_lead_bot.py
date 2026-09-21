@@ -1,5 +1,6 @@
 import os
 import unittest
+from types import SimpleNamespace
 
 os.environ["LEADS_UNIT_TEST"] = "1"
 
@@ -85,6 +86,38 @@ class LeadClassificationTests(unittest.TestCase):
         )
         self.assertIsNone(result)
         self.assertIsNotNone(reason)
+
+    def test_joined_real_estate_chat_is_rejected(self):
+        chat = SimpleNamespace(
+            title="Аренда недвижимости | Абхазия-Сочи",
+            username="hotels_Abhazia",
+            broadcast=False,
+        )
+        self.assertFalse(lead_bot.is_joined_tourist_chat(chat))
+
+    def test_joined_irrelevant_mushroom_chat_is_rejected(self):
+        chat = SimpleNamespace(
+            title="КультУРа Мухомора Чат Краснодар",
+            username="kultura_muhomora",
+            broadcast=False,
+        )
+        self.assertFalse(lead_bot.is_joined_tourist_chat(chat))
+
+    def test_joined_sochi_chat_is_allowed(self):
+        chat = SimpleNamespace(
+            title="Сочи чат",
+            username="sochy_chat",
+            broadcast=False,
+        )
+        self.assertTrue(lead_bot.is_joined_tourist_chat(chat))
+
+    def test_hotel_reviews_abkhazia_chat_is_allowed(self):
+        chat = SimpleNamespace(
+            title="Отзывы об отелях Абхазии",
+            username="abhazia_hotels_travelask",
+            broadcast=False,
+        )
+        self.assertTrue(lead_bot.is_joined_tourist_chat(chat))
 
 
 if __name__ == "__main__":
