@@ -24,13 +24,16 @@ lead_bot.BOT_SEND_RETRIES=1
 lead_bot.urllib.request.urlopen=fake_urlopen
 lead_bot.time.sleep=lambda _:None
 try:
-    asyncio.run(lead_bot.notify('test message','https://t.me/test/1'))
+    asyncio.run(lead_bot.notify('test message','https://t.me/test/1','https://t.me/mama_anna'))
     assert len(calls)==2,len(calls)
     body=urllib.parse.parse_qs(calls[-1].data.decode())
     assert body['chat_id']==['1']
     markup=json.loads(body['reply_markup'][0])
-    assert markup['inline_keyboard'][0][0]['url']=='https://t.me/test/1'
-    assert markup['inline_keyboard'][0][0]['text']=='Открыть источник'
+    buttons=markup['inline_keyboard'][0]
+    assert buttons[0]['url']=='https://t.me/test/1' and buttons[0]['text']=='Открыть источник'
+    assert buttons[1]['url']=='https://t.me/mama_anna' and buttons[1]['text']=='Написать автору'
+    assert lead_bot.author_url_from_source('Telegram: Moms · автор @mama_anna')=='https://t.me/mama_anna'
+    assert lead_bot.author_url_from_source('Kwork') is None
 finally:
     lead_bot.BOT_TOKEN,lead_bot.CHAT_ID,lead_bot.BOT_SEND_RETRIES,lead_bot.urllib.request.urlopen,lead_bot.time.sleep=old
 

@@ -1,4 +1,4 @@
-import asyncio, hashlib, json, os, time, urllib.error, urllib.parse, urllib.request
+import asyncio, hashlib, json, os, re, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from telethon import TelegramClient
@@ -10,7 +10,7 @@ from classifier import score
 from card import build
 from web_sources import collect_cloud_web
 from market_sources import collect_markets
-from sources import merge_unique, normalize_content
+from sources import merge_unique, content_signature
 
 TG_API_ID=int(os.environ.get('TG_API_ID','0'))
 TG_API_HASH=os.environ.get('TG_API_HASH','')
@@ -19,7 +19,7 @@ BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN') or os.environ.get('LEADS_BOT_TOKE
 CHAT_ID=os.environ.get('LOGOLEAD_CHAT_ID','')
 
 STATE_VERSION=4
-CLASSIFIER_VERSION=6
+CLASSIFIER_VERSION=7
 STATE_DIR=Path('.lead_state')
 STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
@@ -123,14 +123,7 @@ def message_key(chat_id,msg_id):
     return hashlib.sha256(f'{chat_ref}:{msg_id}'.encode()).hexdigest()
 
 def delivery_key(url,text):
-    normalized=normalize_content(text)
-    if len(normalized)>=100:
-        basis='text:'+normalized[:1200]
-    elif url:
-        basis='url:'+url.strip()
-    else:
-        basis='text:'+normalized[:1200]
-    return hashlib.sha256(basis.encode()).hexdigest()
+    return hashlib.sha256(content_signature(text,url).encode()).hexdigest()
 
 
 def freshness_text(dt,now=None):
@@ -245,7 +238,11 @@ def select_delivery_candidates(items,now=None):
     stale_count=len(items)-len(deliverable)
     return deliverable[:MAX_LEADS_PER_RUN],deliverable[MAX_LEADS_PER_RUN:],stale_count
 
-async def notify(text,source_url=None):
+def author_url_from_source(source):
+    match=re.search(r'автор\s+@([A-Za-z0-9_]{5,32})\b',source or '',re.I)
+    return f'https://t.me/{match.group(1)}' if match else None
+
+async def notify(text,source_url=None,author_url=None):
     if not BOT_TOKEN or not CHAT_ID:
         print('DRY_SEND',text.encode('ascii','backslashreplace').decode()[:400])
         return
@@ -254,10 +251,13 @@ async def notify(text,source_url=None):
         'text':text,
         'disable_web_page_preview':'true',
     }
+    buttons=[]
     if source_url:
-        payload['reply_markup']=json.dumps({
-            'inline_keyboard':[[{'text':'Открыть источник','url':source_url}]]
-        },ensure_ascii=False)
+        buttons.append({'text':'Открыть источник','url':source_url})
+    if author_url:
+        buttons.append({'text':'Написать автору','url':author_url})
+    if buttons:
+        payload['reply_markup']=json.dumps({'inline_keyboard':[buttons]},ensure_ascii=False)
     data=urllib.parse.urlencode(payload).encode()
     url=f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
 
@@ -713,7 +713,7 @@ async def main():
         for value,published,text,url,reasons,source,seen_key,sent_key in batch:
             card=build(text,url,source,value,reasons,format_published(published))
             try:
-                await notify(card,url)
+                await notify(card,url,author_url_from_source(source))
                 sent_keys[sent_key]=None
                 sent+=1
             except Exception as exc:

@@ -4,7 +4,7 @@ def normalize_content(text):
 
 def content_signature(text,url=''):
     normalized=normalize_content(text)
-    if len(normalized)>=100:
+    if len(normalized)>=40:
         return 'text:'+normalized[:1200]
     if url:
         return 'url:'+url.strip()

@@ -1,50 +1,58 @@
 # LogoLead
 
-Lead finder for a speech therapist, deployed inside the existing VAbkhazii GitHub Actions repository.
+LogoLead is a public-source lead finder for a speech therapist.
 
 ## Production pipeline
-1. Search public Telegram messages for explicit and implicit demand for a speech therapist/defectologist.
-2. Use public chats from matching global-search messages as high-priority source seeds.
+1. Search public Telegram messages for explicit and implicit demand for a speech therapist, defectologist or related help.
+2. Use matching public chats as high-priority source seeds.
 3. Discover and cache public parent, child-development and city parent groups.
-4. Rotate through the cached group pool and scan only messages newer than the last processed message.
-5. Backfill very active groups in small chunks so a useful request is not lost below the newest messages.
-6. Every few hours run deeper keyword search inside a rotating subset of cached groups.
-7. Reject specialist advertising, vacancies and irrelevant educational content.
-8. Score buyer intent from 0 to 100 and extract age, city, format and speech problem when stated.
-9. Keep separate scan deduplication, delivered-lead history and a persistent pending queue.
-10. Generate a personalized reply draft and deliver ranked cards only when delivery is enabled.
+4. Rotate through the group pool and scan only messages newer than the last processed message.
+5. Backfill very active groups in small chunks so older fresh requests are not missed.
+6. Run periodic keyword search inside rotating groups.
+7. Reject specialist advertising, jobs, bots, expert-content posts and other non-client requests.
+8. Score buyer intent from 0 to 100 and extract child age, city, online/offline format and likely speech problem.
+9. Deduplicate cross-posts, preserve delivered history and maintain a persistent pending queue.
+10. Generate a short personalized reply draft and send a compact Telegram card with source/contact buttons.
 
 ## Runtime
-LogoLead runs from `.github/workflows/leads.yml` before the legacy VAbkhazii lead bot. Both run sequentially in one concurrency-protected workflow and reuse the authorized Telegram user session.
+LogoLead has its own GitHub Actions workflow: `.github/workflows/logolead.yml`. The legacy VAbkhazii lead bot stays in a separate workflow, so neither blocks the other.
 
-Production defaults:
-- effective LogoLead scan cadence: about every 10 minutes;
-- lead freshness window: 72 hours;
-- delivery threshold: 50/100;
-- max cards per delivery run: 12;
-- pending queue capacity: 500 candidates;
-- public-group discovery refresh: about every 6 hours;
+- schedule: GitHub trigger every 5 minutes, effective LogoLead scan interval about 10 minutes;
+- push: run the test suite only, never deliver leads;
+- manual dispatch: run tests and allow a forced production scan;
+- lead search window: 72 hours;
+- delivery window: only leads newer than 24 hours;
+- production threshold: 50/100;
+- canary delivery: at most 1 card per run while accuracy is being validated;
+- pending queue: up to 500 candidates;
 - group cache: up to 120 public groups;
-- up to 30 groups scanned per normal run;
-- first chronological group scan: up to 180 recent messages, followed by incremental/backfill scans;
-- deep group search: every 3 hours across a rotating subset;
-- delivered-lead history survives classifier rescans.
+- group discovery refresh: about every 6 hours;
+- deep Telegram search: about every 3 hours.
 
-## Delivery pause
-Production delivery is currently controlled by `DELIVERY_ENABLED`. When it is `0`, LogoLead keeps searching and qualifying leads but does not send Telegram messages. Eligible leads are stored in the persistent pending queue, so pausing delivery does not intentionally discard them.
+Scheduled runs skip the full regression suite to reduce latency and GitHub Actions usage. Every code push runs the complete tests before production code is manually/scheduled.
 
-The LogoLead destination is separate from the legacy bot destination and comes from the `LOGOLEAD_CHAT_ID` GitHub Secret. This avoids accidentally sending speech-therapy leads to the old travel-leads chat.
+## Delivery target
+The destination is stored in the repository secret `LOGOLEAD_CHAT_ID`; it is independent from the old travel-leads chat. `LOGOLEAD_BOT_TOKEN` is supported for a dedicated future LogoLead bot. Until that secret exists, the authorized legacy delivery bot token is used.
 
-## Diagnostics
-Production logs report aggregate counts only: checked messages, score histogram, signal combinations, query hit counts and rejection reasons. They do not print user message bodies.
+A separate manual workflow, `check-logolead-target.yml`, verifies that a Telegram user is reachable by the delivery bot without publishing numeric IDs in source code.
+
+## Lead cards
+Cards include:
+- lead score and heat level;
+- source and public Telegram author username when available;
+- child age, location and requested format when detected;
+- likely speech issue;
+- reason for the score;
+- publication freshness;
+- original excerpt;
+- a ready-to-send response draft;
+- button to open the source;
+- button to open the public author profile when a username is available.
+
+## Quality controls
+The repository has unit/integration tests plus a curated positive/negative lead quality gate. Provider accounts, bot-authored posts, vacancies, courses/webinars, promotional posts and media/expert requests are filtered before delivery.
 
 ## Public marketplaces and web sources
-The production bot checks Kwork's public project exchange by speech-therapy keywords, validates project text for speech-therapy terms, keeps publication timestamps, and does not log in or automate responses.
+Kwork public projects are checked without login. Public Woman.ru threads can also be evaluated. Babyblog and U-mama adapters remain local-only because GitHub-hosted runners are rejected by those sites; LogoLead does not bypass their protections.
 
-Production web scanning can check recent public Woman.ru forum threads, prefilter titles for child/speech intent, and validate publication timestamps before scoring.
-
-Babyblog and U-mama adapters are also present. Those sites reject GitHub-hosted runner traffic, so the cloud bot does not attempt to bypass their protections.
-
-Set `MIN_SCORE=75` for hot-leads-only mode.
-
-Only public/searchable sources are scanned. No private-group auto-join, credential bypass, anti-bot bypass, or automated unsolicited messaging.
+Only public/searchable sources are scanned. No private-group auto-join, credential bypass, anti-bot bypass or automated unsolicited messaging.

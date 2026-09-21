@@ -18,5 +18,8 @@ assert max(x[0] for x in merged if x[2].strip()=='other')==70
 long_matches=[x for x in merged if x[2]==long_text]
 assert len(long_matches)==1 and long_matches[0][0]==75
 assert content_signature(long_text,'https://x/2')==content_signature(long_text,'https://x/3')
+mid='Посоветуйте хорошего логопеда ребёнку пяти лет'
+assert len(mid)>=40
+assert content_signature(mid,'https://x/2')==content_signature(mid,'https://x/3')
 assert content_signature('short','https://x/2')!=content_signature('short','https://x/3')
 print('SOURCES_TEST_OK')
