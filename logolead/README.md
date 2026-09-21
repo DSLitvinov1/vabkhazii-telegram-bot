@@ -17,9 +17,10 @@ LogoLead is a public-source lead finder for a speech therapist.
 ## Runtime
 LogoLead has its own GitHub Actions workflow: `.github/workflows/logolead.yml`. The legacy VAbkhazii lead bot stays in a separate workflow, so neither blocks the other.
 
-- schedule: GitHub trigger every 5 minutes, effective LogoLead scan interval about 10 minutes;
+- production schedule is temporarily paused while the Telegram user session is renewed;
 - push: run the test suite only, never deliver leads;
-- manual dispatch: run tests and allow a forced production scan;
+- manual dispatch: run tests and allow a forced scan after the Telegram session is valid again;
+- once the session is renewed, the intended schedule is a GitHub trigger every 5 minutes with an effective LogoLead scan interval of about 10 minutes;
 - lead search window: 72 hours;
 - delivery window: only leads newer than 24 hours;
 - production threshold: 50/100;

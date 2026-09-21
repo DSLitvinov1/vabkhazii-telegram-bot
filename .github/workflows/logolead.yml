@@ -12,8 +12,6 @@ on:
         description: "Force LogoLead scan now"
         required: false
         default: "0"
-  schedule:
-    - cron: "*/5 * * * *"
 
 jobs:
   leads:

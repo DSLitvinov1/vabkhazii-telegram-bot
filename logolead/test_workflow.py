@@ -5,7 +5,8 @@ legacy=Path('../.github/workflows/leads.yml').read_text(encoding='utf-8')
 target=Path('../.github/workflows/check-logolead-target.yml').read_text(encoding='utf-8')
 
 assert 'name: LogoLead' in logo
-assert 'push:' in logo and 'schedule:' in logo and 'workflow_dispatch:' in logo
+assert 'push:' in logo and 'workflow_dispatch:' in logo
+assert 'schedule:' not in logo
 assert 'actions/checkout@v7' in logo
 assert 'actions/cache@v6' in logo
 assert 'actions/setup-python@v7' in logo
@@ -34,7 +35,7 @@ assert 'name: VAbkhazii Leads Bot' in legacy
 assert 'Run LogoLead' not in legacy
 assert 'LOGOLEAD_CHAT_ID' not in legacy
 assert 'Run VAbkhazii Leads Bot' in legacy
-assert '2-59/5 * * * *' in legacy
+assert 'schedule:' not in legacy
 
 assert 'workflow_dispatch:' in target
 assert 'schedule:' not in target
