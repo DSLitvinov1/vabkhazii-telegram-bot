@@ -30,7 +30,6 @@ jobs:
           restore-keys: |
             vabkhazii-travel-leads-
             vabkhazii-leads-
-          save-always: true
 
       - name: Install Python
         uses: actions/setup-python@v7
@@ -90,6 +89,7 @@ jobs:
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
         run: python lead_bot.py
 
@@ -98,6 +98,7 @@ jobs:
         continue-on-error: true
         env:
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
           RUN_NUMBER: ${{ github.run_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -110,4 +111,11 @@ jobs:
           Запуск: #$RUN_NUMBER
           Проверь GitHub Actions:
           $RUN_URL"
-          curl --silent --show-error --fail-with-body --request POST "https://api.telegram.org/bot$LEADS_BOT_TOKEN/sendMessage" --data-urlencode "chat_id=$LEADS_CHAT_ID" --data-urlencode "text=$MESSAGE"
+          if ! curl --silent --show-error --fail-with-body --request POST "https://api.telegram.org/bot$LEADS_BOT_TOKEN/sendMessage" --data-urlencode "chat_id=$LEADS_CHAT_ID" --data-urlencode "text=$MESSAGE"; then
+            if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ "$TELEGRAM_BOT_TOKEN" != "$LEADS_BOT_TOKEN" ]; then
+              echo "Primary alert bot failed; trying fallback bot"
+              curl --silent --show-error --fail-with-body --request POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" --data-urlencode "chat_id=$LEADS_CHAT_ID" --data-urlencode "text=$MESSAGE"
+            else
+              exit 1
+            fi
+          fi
