@@ -243,6 +243,33 @@ EXTERNAL_SOURCES = [
         ],
     },
     {
+        "key": "vk_tourist_discussions",
+        "name": "VK — публичные туристические обсуждения",
+        "kind": "vk_index",
+        "access": "search_index",
+        "domain": "vk.com",
+        "path_regex": r"/(?:wall-?\\d+_\\d+|topic-?\\d+_\\d+)",
+        "search_queries": [
+            'site:vk.com/wall Абхазия "ищем экскурсию"',
+            'site:vk.com/wall Абхазия "нужен гид"',
+            'site:vk.com/wall Абхазия "нужен трансфер"',
+            'site:vk.com/topic Абхазия "посоветуйте экскурсию"',
+        ],
+    },
+    {
+        "key": "pikabu_travel_discussions",
+        "name": "Пикабу — публичные обсуждения путешествий",
+        "kind": "pikabu_index",
+        "access": "search_index",
+        "domain": "pikabu.ru",
+        "path_regex": r"/story/[^/?#]+_\\d+",
+        "search_queries": [
+            'site:pikabu.ru/story/ Абхазия "нужен гид"',
+            'site:pikabu.ru/story/ Абхазия "экскурсию" "ищем"',
+            'site:pikabu.ru/story/ Абхазия "трансфер"',
+        ],
+    },
+    {
         "key": "telegram_public_index",
         "name": "Telegram — публичные сообщения",
         "kind": "telegram_index",
