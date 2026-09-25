@@ -32,14 +32,17 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertEqual(result["bucket"], "direct")
         self.assertEqual(result["lead_type"], "excursion")
 
-    def test_real_planning_question_is_kept(self):
+    def test_real_planning_question_is_suppressed(self):
         result, reason = self.classify(
             "В начале октября собираемся в Абхазию с детьми. "
             "Подскажите, куда лучше съездить и что посмотреть?"
         )
-        self.assertIsNone(reason)
-        self.assertIsNotNone(result)
-        self.assertEqual(result["bucket"], "planning")
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
+    def test_planning_digest_is_disabled_even_with_existing_items(self):
+        self.assertIsNone(lead_bot.make_planning_digest([{"text": "Планируем поездку"}]))
+        self.assertFalse(lead_bot.PLANNING_NOTIFICATIONS_ENABLED)
 
     def test_past_trip_story_is_filtered(self):
         result, reason = self.classify(
