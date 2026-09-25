@@ -13,6 +13,18 @@ class LeadClassificationTests(unittest.TestCase):
     def classify(self, text):
         return lead_bot.classify_lead_detailed(text, self.SOURCE)
 
+    def test_additional_public_discussion_sources_are_configured(self):
+        sources = {item["key"]: item for item in lead_bot.EXTERNAL_SOURCES}
+        for key in ("vk_tourist_discussions", "pikabu_travel_discussions"):
+            source = sources[key]
+            self.assertEqual(source["access"], "search_index")
+            self.assertTrue(source["search_queries"])
+            self.assertTrue(source["path_regex"])
+
+    def test_planning_notifications_remain_disabled_with_new_sources(self):
+        self.assertFalse(lead_bot.PLANNING_NOTIFICATIONS_ENABLED)
+        self.assertIsNone(lead_bot.make_planning_digest([{"text": "Планируем поездку"}]))
+
     def test_hot_transfer_request_is_kept(self):
         result, reason = self.classify(
             "Добрый день. Кто может забрать с аэропорта Сочи до Лдзаа сегодня "
