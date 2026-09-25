@@ -248,7 +248,7 @@ EXTERNAL_SOURCES = [
         "kind": "vk_index",
         "access": "search_index",
         "domain": "vk.com",
-        "path_regex": r"/(?:wall-?\\d+_\\d+|topic-?\\d+_\\d+)",
+        "path_regex": r"/(?:wall-?\d+_\d+|topic-?\d+_\d+)",
         "search_queries": [
             'site:vk.com/wall Абхазия "ищем экскурсию"',
             'site:vk.com/wall Абхазия "нужен гид"',
@@ -262,7 +262,7 @@ EXTERNAL_SOURCES = [
         "kind": "pikabu_index",
         "access": "search_index",
         "domain": "pikabu.ru",
-        "path_regex": r"/story/[^/?#]+_\\d+",
+        "path_regex": r"/story/[^/?#]+_\d+",
         "search_queries": [
             'site:pikabu.ru/story/ Абхазия "нужен гид"',
             'site:pikabu.ru/story/ Абхазия "экскурсию" "ищем"',
