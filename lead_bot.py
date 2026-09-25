@@ -132,6 +132,9 @@ TEST_MODE = os.environ.get("TEST_MODE", "false").strip().lower() in {
     "1", "true", "yes", "on"
 }
 
+# Planning-trip notifications are disabled; direct service requests remain active.
+PLANNING_NOTIFICATIONS_ENABLED = False
+
 STATE_DIR = Path(".lead_state")
 STATE_FILE = STATE_DIR / "state.json"
 
@@ -2169,7 +2172,7 @@ def classify_lead_detailed(text, source_context=""):
         direct_intent = True
 
     if not direct_intent:
-        if is_planning_request(text):
+        if PLANNING_NOTIFICATIONS_ENABLED and is_planning_request(text):
             reasons = ["планирует будущую поездку", "нет прямого запроса услуги"]
             if any(p in lower for p in ["кто едет", "ищу компанию", "ищем компанию", "ищу попут", "ищем попут"]):
                 reasons.append("ищет попутчиков/компанию")
@@ -3739,7 +3742,7 @@ async def search_public_messages(client, state, self_user_id):
 
     result = aggregate_telegram_candidates(list(candidates.values()), stats)
     direct = [item for item in result if item["classification"].get("bucket") == "direct"]
-    planning = [item for item in result if item["classification"].get("bucket") == "planning"]
+    planning = [item for item in result if item["classification"].get("bucket") == "planning"] if PLANNING_NOTIFICATIONS_ENABLED else []
 
     direct.sort(
         key=lambda item: (item["classification"]["score"], item["date"]),
@@ -3751,7 +3754,7 @@ async def search_public_messages(client, state, self_user_id):
 
 
 def make_planning_digest(planning):
-    if not planning:
+    if not PLANNING_NOTIFICATIONS_ENABLED or not planning:
         return None
 
     lines = [
