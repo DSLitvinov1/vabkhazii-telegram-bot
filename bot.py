@@ -1706,10 +1706,10 @@ def build_positive_news_post(state):
         source = html.escape(news["url"], quote=True)
         title = html.escape(news["title"])
         post = (
-            "🌿 <b>ХОРОШИЕ НОВОСТИ ИЗ АБХАЗИИ</b>\\n\\n"
-            f"<b>{title}</b>\\n\\n"
-            f"{html.escape(summary)}\\n\\n"
-            f'📰 <a href="{source}">Источник новости</a>\\n\\n'
+            "🌿 <b>ХОРОШИЕ НОВОСТИ ИЗ АБХАЗИИ</b>\n\n"
+            f"<b>{title}</b>\n\n"
+            f"{html.escape(summary)}\n\n"
+            f'📰 <a href="{source}">Источник новости</a>\n\n'
             "👉 @VAbkhazii"
         )
         return post, news["hash"]
