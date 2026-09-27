@@ -1523,7 +1523,7 @@ def build_morning_post(weather, marine, state):
         "📍 Нужна экскурсия или трансфер? Напишите город и количество человек.",
         "👉 @VAbkhazii",
     ])
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 
