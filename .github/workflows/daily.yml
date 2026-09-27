@@ -1,6 +1,9 @@
 name: VAbkhazii Daily Post
 
 on:
+  schedule:
+    - cron: '0 6 * * 1,4'
+    - cron: '0 6 * * 2,5'
   workflow_dispatch:
     inputs:
       post_mode:
@@ -11,6 +14,7 @@ on:
         options:
           - morning
           - evening
+          - news
 
 jobs:
   publish:
@@ -40,4 +44,5 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL: "@VAbkhazii"
+          POST_MODE: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 6 * * 2,5' && 'news' || 'morning') || inputs.post_mode || 'morning' }}
         run: python bot.py
