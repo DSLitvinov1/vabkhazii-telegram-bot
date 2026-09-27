@@ -1697,8 +1697,39 @@ def send_telegram(
         )
 
 
+def build_positive_news_post(state):
+    """Publish only a recent, readable source-backed item, never an invented headline."""
+    for news in collect_news_candidates(state)[:12]:
+        summary = article_summary(news["title"], news["url"])
+        if not summary:
+            continue
+        source = html.escape(news["url"], quote=True)
+        title = html.escape(news["title"])
+        post = (
+            "🌿 <b>ХОРОШИЕ НОВОСТИ ИЗ АБХАЗИИ</b>\\n\\n"
+            f"<b>{title}</b>\\n\\n"
+            f"{html.escape(summary)}\\n\\n"
+            f'📰 <a href="{source}">Источник новости</a>\\n\\n'
+            "👉 @VAbkhazii"
+        )
+        return post, news["hash"]
+    return None, None
+
+
 def main():
     state = load_state()
+
+    if os.getenv("POST_MODE", "morning").lower() == "news":
+        post, news_hash = build_positive_news_post(state)
+        if not post:
+            print("No verified fresh positive news; skipping publication.")
+            return
+        send_telegram(post)
+        state.setdefault("used_news", []).append(news_hash)
+        state["used_news"] = state["used_news"][-50:]
+        save_state(state)
+        print("Positive news published.")
+        return
 
     weather = {
         name:
