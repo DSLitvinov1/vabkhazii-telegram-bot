@@ -371,7 +371,7 @@ def weather_for(
                     "wind_speed_10m_max"
                 ),
             "forecast_days":
-                2,
+                5,
             "timezone":
                 TZ,
         }
@@ -387,7 +387,7 @@ def weather_for(
 
     days = []
 
-    for index in range(2):
+    for index in range(5):
         days.append(
             {
                 "date":
@@ -1486,161 +1486,45 @@ def interesting_block(
     )
 
 
-def build_morning_post(
-    weather,
-    marine,
-    state
-):
-    coast = weather[
-        "Гагра"
-    ]
-
-    today = (
-        coast[
-            "days"
-        ][0]
-    )
-
-    current = coast[
-        "current"
-    ]
-
-    best = choose_best(
-        weather
-    )
-
-    weather_desc = (
-        WEATHER_TEXT.get(
-            today[
-                "code"
-            ],
-            "переменная погода"
-        )
-    )
-
+def build_morning_post(weather, marine, state):
+    """Cover every day through the next scheduled weather post, inclusive."""
+    today = now_local().date()
+    # Monday -> Thursday; Thursday -> next Monday.
+    days_until_next = (3 - today.weekday()) % 7 if today.weekday() <= 3 else (7 - today.weekday()) % 7
+    if days_until_next == 0:
+        days_until_next = 4
+    count = min(days_until_next + 1, len(weather["Гагра"]["days"]))
+    end_day = weather["Гагра"]["days"][count - 1]["date"]
     lines = [
-        (
-            f"🇦🇧 <b>АБХАЗИЯ СЕГОДНЯ | "
-            f"{date_title(today['date'])}</b>"
-        ),
-
-        "",
-
-        (
-            f"🌤 Побережье: "
-            f"<b>{weather_desc}</b>. "
-            f"Сейчас около "
-            f"<b>+{current['temp']}°C</b>, "
-            f"днём до "
-            f"<b>+{today['max']}°C</b>."
-        ),
-
-        (
-            f"🌧 Осадки: вероятность до "
-            f"<b>{today['rain_prob']}%</b>. "
-            f"Ветер до "
-            f"<b>{today['wind_max']} км/ч</b>."
-        ),
+        f"🇦🇧 <b>АБХАЗИЯ | ПРОГНОЗ ДО {date_title(end_day)} ВКЛЮЧИТЕЛЬНО</b>",
+        "Прогноз на каждый день до следующего выпуска:",
     ]
-
-    sea = sea_line(
-        marine
-    )
-
+    locations = ["Гагра", "Рица", "Новый Афон", "Восточная Абхазия", "Мзы"]
+    for index in range(count):
+        date = weather["Гагра"]["days"][index]["date"]
+        lines.extend(["", f"📅 <b>{date_title(date)}</b>"])
+        for name in locations:
+            day = weather[name]["days"][index]
+            condition = WEATHER_TEXT.get(day["code"], "переменная погода")
+            lines.append(
+                f"• <b>{name}</b>: {condition}, "
+                f"{day['min']:+d}…{day['max']:+d}°C, "
+                f"осадки до {day['rain_prob']}%, "
+                f"ветер до {day['wind_max']} км/ч."
+            )
+    sea = sea_line(marine)
     if sea:
-        lines.append(
-            sea
-        )
-
-    lines += [
+        lines.extend(["", "🌊 <b>Море сейчас:</b> " + sea.removeprefix("🌊 Море: ")])
+    lines.extend([
         "",
-        "<b>Куда я бы поехал сегодня:</b>",
-    ]
-
-    for name in [
-        "Рица",
-        "Новый Афон",
-        "Восточная Абхазия",
-        "Мзы",
-    ]:
-        day = (
-            weather[
-                name
-            ][
-                "days"
-            ][0]
-        )
-
-        emoji, note, _ = (
-            route_status(
-                name,
-                day
-            )
-        )
-
-        lines.append(
-            (
-                f"{emoji} "
-                f"<b>{name}</b> — "
-                f"{note}. "
-                f"Днём около "
-                f"+{day['max']}°C, "
-                f"осадки до "
-                f"{day['rain_prob']}%."
-            )
-        )
-
-    lines += [
+        "⚠️ Это прогноз, а не подтверждение безопасности маршрутов. "
+        "В горах погода меняется быстро; перед выездом уточняйте обстановку.",
         "",
-
-        (
-            f"🔥 <b>МОЙ ВЫБОР НА СЕГОДНЯ: "
-            f"{best.upper()}</b>"
-        ),
-
-        (
-            "По прогнозу это один "
-            "из наиболее удачных "
-            "вариантов на день."
-        ),
-
-        "",
-
-        interesting_block(
-            state
-        ),
-
-        "",
-
-        (
-            "⚠️ В горах погода переменчива, "
-            "поэтому перед выездом всегда "
-            "учитывайте текущую обстановку "
-            "на маршруте."
-        ),
-
-        "",
-
-        (
-            "📍 <b>Уже отдыхаете "
-            "в Абхазии?</b>"
-        ),
-
-        (
-            "Напишите "
-            "<b>город + сколько вас человек</b> "
-            "— подскажу маршрут "
-            "на сегодня или завтра."
-        ),
-
-        "",
-
+        "📍 Нужна экскурсия или трансфер? Напишите город и количество человек.",
         "👉 @VAbkhazii",
-    ]
+    ])
+    return "\\n".join(lines)
 
-    return "\n".join(
-        lines
-    )
 
 
 def send_telegram(
