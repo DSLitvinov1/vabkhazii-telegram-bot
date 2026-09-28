@@ -51,7 +51,7 @@ jobs:
           mode = ("news" if os.environ.get("EVENT_SCHEDULE") == "0 6 * * 2,5" else "morning") if scheduled else (os.environ.get("INPUT_MODE") or "morning")
           allowed = (weekday in (0,3) if mode == "morning" else weekday in (1,4))
           # Do not publish late queued scheduled jobs on an unintended day.
-          enabled = allowed if scheduled else True
+          enabled = allowed
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"mode={mode}\n")
               out.write(f"enabled={str(enabled).lower()}\n")
@@ -94,7 +94,7 @@ jobs:
         if: steps.publish.outputs.published == 'true'
         run: |
           mkdir -p .publication_marker
-          printf '%s\\n' "${{ steps.slot.outputs.mode }}" > .publication_marker/slot.txt
+          printf '%s\n' "${{ steps.slot.outputs.mode }}" > .publication_marker/slot.txt
 
       - name: Save published-slot marker
         if: steps.publish.outputs.published == 'true'
