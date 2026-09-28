@@ -1613,6 +1613,9 @@ def main():
         state["used_news"] = state["used_news"][-50:]
         save_state(state)
         print("Positive news published.")
+        if os.getenv("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                output.write("published=true\n")
         return
 
     weather = {
@@ -1642,6 +1645,9 @@ def main():
     save_state(
         state
     )
+    if os.getenv("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write("published=true\n")
 
 
 if __name__ == "__main__":
