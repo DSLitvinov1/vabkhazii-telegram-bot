@@ -7,42 +7,107 @@ on:
   workflow_dispatch:
     inputs:
       post_mode:
-        description: "Тип публикации"
+        description: "Publication type"
         required: false
         default: "morning"
         type: choice
         options:
           - morning
-          - evening
           - news
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vabkhazii-channel-publication
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
       - name: Download bot
         uses: actions/checkout@v4
-
-      - name: Restore content history
-        uses: actions/cache@v4
-        with:
-          path: .bot_state
-          key: vabkhazii-state-${{ github.run_id }}
-          restore-keys: |
-            vabkhazii-state-
 
       - name: Install Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Resolve publication slot and validate schedule
+        id: slot
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ inputs.post_mode }}
+        run: |
+          python - <<'PY'
+          import datetime, os
+          from zoneinfo import ZoneInfo
+          now = datetime.datetime.now(ZoneInfo("Europe/Moscow"))
+          weekday = now.weekday()
+          scheduled = os.environ["EVENT_NAME"] == "schedule"
+          mode = ("news" if os.environ.get("EVENT_SCHEDULE") == "0 6 * * 2,5" else "morning") if scheduled else (os.environ.get("INPUT_MODE") or "morning")
+          allowed = (weekday in (0,3) if mode == "morning" else weekday in (1,4))
+          # Do not publish late queued scheduled jobs on an unintended day.
+          enabled = allowed if scheduled else True
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"mode={mode}\n")
+              out.write(f"enabled={str(enabled).lower()}\n")
+              out.write(f"slot={now.date().isoformat()}-{mode}\n")
+          print(f"Publication slot: {now.date()} {mode}; allowed={enabled}")
+          PY
+
+      - name: Restore published-slot marker
+        if: steps.slot.outputs.enabled == 'true'
+        id: marker
+        uses: actions/cache/restore@v4
+        with:
+          path: .publication_marker
+          key: vabkhazii-published-${{ steps.slot.outputs.slot }}
+
+      - name: Restore content history
+        if: steps.slot.outputs.enabled == 'true' && steps.marker.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .bot_state
+          key: vabkhazii-state-${{ github.run_id }}
+          restore-keys: |
+            vabkhazii-state-
+
       - name: Check Python code
+        if: steps.slot.outputs.enabled == 'true' && steps.marker.outputs.cache-hit != 'true'
         run: python -m py_compile bot.py
 
       - name: Publish Telegram post
+        id: publish
+        if: steps.slot.outputs.enabled == 'true' && steps.marker.outputs.cache-hit != 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL: "@VAbkhazii"
-          POST_MODE: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 6 * * 2,5' && 'news' || 'morning') || inputs.post_mode || 'morning' }}
-        run: python bot.py
+          POST_MODE: ${{ steps.slot.outputs.mode }}
+        run: |
+          python bot.py
+          # Mark only when a post was actually sent.
+          # News mode skips publication when there is no verified fresh item.
+          if [ "$POST_MODE" = "news" ] && [ ! -f .bot_state/state.json ]; then
+            echo "No confirmed publication marker; skip slot lock"
+          else
+            mkdir -p .publication_marker
+            printf '%s\n' "$POST_MODE" > .publication_marker/slot.txt
+          fi
+
+      - name: Save published-slot marker
+        if: steps.publish.outcome == 'success' && hashFiles('.publication_marker/slot.txt') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .publication_marker
+          key: vabkhazii-published-${{ steps.slot.outputs.slot }}
+
+      - name: Save content history
+        if: steps.publish.outcome == 'success' && hashFiles('.bot_state/state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .bot_state
+          key: vabkhazii-state-${{ github.run_id }}
