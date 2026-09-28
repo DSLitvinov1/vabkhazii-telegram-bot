@@ -89,17 +89,15 @@ jobs:
           POST_MODE: ${{ steps.slot.outputs.mode }}
         run: |
           python bot.py
-          # Mark only when a post was actually sent.
-          # News mode skips publication when there is no verified fresh item.
-          if [ "$POST_MODE" = "news" ] && [ ! -f .bot_state/state.json ]; then
-            echo "No confirmed publication marker; skip slot lock"
-          else
-            mkdir -p .publication_marker
-            printf '%s\n' "$POST_MODE" > .publication_marker/slot.txt
-          fi
+
+      - name: Mark confirmed publication
+        if: steps.publish.outputs.published == 'true'
+        run: |
+          mkdir -p .publication_marker
+          printf '%s\\n' "${{ steps.slot.outputs.mode }}" > .publication_marker/slot.txt
 
       - name: Save published-slot marker
-        if: steps.publish.outcome == 'success' && hashFiles('.publication_marker/slot.txt') != ''
+        if: steps.publish.outputs.published == 'true'
         uses: actions/cache/save@v4
         with:
           path: .publication_marker
