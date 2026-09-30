@@ -1988,6 +1988,20 @@ def looks_like_route_discussion_only(text):
     if has_explicit_service_request(text):
         return False
 
+    # Не теряем тёплый трансферный спрос: турист спрашивает, как добраться
+    # между конкретными точками, и указывает время/будущую поездку.
+    route_question = any(
+        phrase in lower
+        for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться"]
+    )
+    concrete_trip = (
+        len(detect_all_places(text)) >= 2
+        and ("?" in text or "подскаж" in lower)
+        and (detect_time_hint(text) or has_future_trip_signal(text))
+    )
+    if route_question and concrete_trip:
+        return False
+
     markers = sum(1 for marker in ROUTE_DISCUSSION_MARKERS if marker in lower)
     if markers >= 1 and not any(phrase in lower for phrase in PLANNING_INTENT_PHRASES):
         return True
@@ -2193,6 +2207,21 @@ def classify_lead_detailed(text, source_context=""):
 
     direct_intent = has_explicit_service_request(text)
 
+    # Тёплый скрытый спрос на трансфер: конкретный маршрут + вопрос как добраться
+    # + время/будущая поездка. Такие запросы ценны даже если человек сначала
+    # спрашивает про маршрутку или автобус.
+    warm_transport_intent = (
+        len(detect_all_places(text)) >= 2
+        and any(
+            phrase in lower
+            for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться"]
+        )
+        and ("?" in text or "подскаж" in lower)
+        and (detect_time_hint(text) or has_future_trip_signal(text))
+    )
+    if warm_transport_intent:
+        direct_intent = True
+
     # Нестандартный запрос «нужен человек с правами» всё равно потенциально
     # относится к трансферу, но не считается горячим без дополнительных деталей.
     if is_nonstandard_driver_request(text):
@@ -2221,6 +2250,8 @@ def classify_lead_detailed(text, source_context=""):
         return None, "no_direct_service_intent"
 
     lead_type = detect_lead_type(text)
+    if warm_transport_intent:
+        lead_type = "transfer"
     if is_nonstandard_driver_request(text):
         lead_type = "transfer"
     if lead_type == "unknown" or lead_type == "companions":
@@ -2245,7 +2276,9 @@ def classify_lead_detailed(text, source_context=""):
     research_only = is_price_research_request(text)
     nonstandard_driver = is_nonstandard_driver_request(text)
 
-    force_warm = False
+    force_warm = warm_transport_intent
+    if warm_transport_intent:
+        reasons.append("скрытый спрос на трансфер")
     if research_only:
         reasons.append("сравнивает/уточняет условия")
         # Вопрос о цене + количество людей/маршрут ещё не означает готовый заказ.
