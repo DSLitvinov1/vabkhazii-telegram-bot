@@ -73,6 +73,24 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertEqual(result["lead_type"], "excursion")
         self.assertEqual(result["temperature"], "warm")
 
+    def test_natural_bus_question_is_kept_warm(self):
+        result, reason = self.classify(
+            "Маршрутки Сухум — Гагра вечером еще ходят?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_taxi_availability_question_is_kept_warm(self):
+        result, reason = self.classify(
+            "Есть ли такси из Гагры до аэропорта вечером?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(result["temperature"], "warm")
+
     def test_plain_route_chatter_stays_filtered(self):
         result, reason = self.classify(
             "Маршрутка Сухум Гагра идет по этой дороге, около 30 км."
