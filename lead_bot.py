@@ -1992,10 +1992,10 @@ def looks_like_route_discussion_only(text):
     # между конкретными точками, и указывает время/будущую поездку.
     route_question = any(
         phrase in lower
-        for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться"]
+        for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться", "как уехать", "чем доехать", "чем уехать", "ходит ли", "ходят ли"]
     )
     concrete_trip = (
-        len(detect_all_places(text)) >= 2
+        (len(detect_all_places(text)) >= 2 or (len(detect_all_places(text)) >= 1 and any(word in lower for word in ["аэропорт", "вокзал", "автовокзал", "прилет", "приезж", "уезж", "выезж"])))
         and ("?" in text or "подскаж" in lower)
         and (detect_time_hint(text) or has_future_trip_signal(text) or any(word in lower for word in ["маршрут", "автобус", "такси", "транспорт", "аэропорт", "вокзал"]))
     )
@@ -2047,7 +2047,7 @@ def is_planning_request(text):
     # а не ответ/обсуждение дороги.
     route_question = any(
         phrase in lower
-        for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться"]
+        for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться", "как уехать", "чем доехать", "чем уехать", "ходит ли", "ходят ли"]
     ) and ("?" in text or "подскаж" in lower or "пожалуйста" in lower)
 
     explicit_trip_phrase = any(phrase in lower for phrase in PLANNING_PHRASES)
@@ -2211,13 +2211,13 @@ def classify_lead_detailed(text, source_context=""):
     # + время/будущая поездка. Такие запросы ценны даже если человек сначала
     # спрашивает про маршрутку или автобус.
     warm_transport_intent = (
-        len(detect_all_places(text)) >= 2
+        (len(detect_all_places(text)) >= 2 or (len(detect_all_places(text)) >= 1 and any(word in lower for word in ["аэропорт", "вокзал", "автовокзал", "прилет", "приезж", "уезж", "выезж"])))
         and any(
             phrase in lower
-            for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться"]
+            for phrase in ["как добраться", "как доехать", "на чем добраться", "на чём добраться", "как уехать", "чем доехать", "чем уехать", "ходит ли", "ходят ли"]
         )
         and ("?" in text or "подскаж" in lower)
-        and (detect_time_hint(text) or has_future_trip_signal(text))
+        and (detect_time_hint(text) or has_future_trip_signal(text) or any(word in lower for word in ["маршрут", "автобус", "такси", "транспорт", "аэропорт", "вокзал", "автовокзал"]))
     )
     if warm_transport_intent:
         direct_intent = True
