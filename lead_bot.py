@@ -2222,6 +2222,21 @@ def classify_lead_detailed(text, source_context=""):
     if warm_transport_intent:
         direct_intent = True
 
+    warm_excursion_intent = bool(
+        detect_route(text)
+        and any(
+            phrase in lower
+            for phrase in [
+                "как попасть", "как съездить", "как поехать",
+                "хочу на ", "хотим на ", "хочу в ", "хотим в ",
+                "кто возит", "кто свозит", "можно ли попасть",
+                "можно ли поехать",
+            ]
+        )
+    )
+    if warm_excursion_intent:
+        direct_intent = True
+
     # Нестандартный запрос «нужен человек с правами» всё равно потенциально
     # относится к трансферу, но не считается горячим без дополнительных деталей.
     if is_nonstandard_driver_request(text):
@@ -2252,6 +2267,8 @@ def classify_lead_detailed(text, source_context=""):
     lead_type = detect_lead_type(text)
     if warm_transport_intent:
         lead_type = "transfer"
+    elif warm_excursion_intent:
+        lead_type = "excursion"
     if is_nonstandard_driver_request(text):
         lead_type = "transfer"
     if lead_type == "unknown" or lead_type == "companions":
@@ -2276,9 +2293,11 @@ def classify_lead_detailed(text, source_context=""):
     research_only = is_price_research_request(text)
     nonstandard_driver = is_nonstandard_driver_request(text)
 
-    force_warm = warm_transport_intent
+    force_warm = warm_transport_intent or warm_excursion_intent
     if warm_transport_intent:
         reasons.append("скрытый спрос на трансфер")
+    if warm_excursion_intent:
+        reasons.append("скрытый спрос на экскурсию")
     if research_only:
         reasons.append("сравнивает/уточняет условия")
         # Вопрос о цене + количество людей/маршрут ещё не означает готовый заказ.
