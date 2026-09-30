@@ -50,6 +50,8 @@ TG_URL = (
     "bot{token}/sendMessage"
 )
 
+TELEGRAM_TEXT_LIMIT = 4096
+
 
 NEWS_QUERIES = [
     (
@@ -1527,12 +1529,23 @@ def build_morning_post(weather, marine, state):
 
 
 
+def telegram_visible_length(text):
+    plain = re.sub(r"<[^>]+>", "", html.unescape(text))
+    return len(plain)
+
+
 def send_telegram(
     text
 ):
     if not BOT_TOKEN:
         raise RuntimeError(
             "TELEGRAM_BOT_TOKEN is not set"
+        )
+
+    visible_length = telegram_visible_length(text)
+    if visible_length > TELEGRAM_TEXT_LIMIT:
+        raise RuntimeError(
+            f"Telegram text is too long: {visible_length} > {TELEGRAM_TEXT_LIMIT}"
         )
 
     url = TG_URL.format(
@@ -1582,7 +1595,7 @@ def send_telegram(
 
 
 def build_positive_news_post(state):
-    """Publish only a recent, readable source-backed item, never an invented headline."""
+    """Prefer a fresh positive news item; otherwise publish a compact non-repeating fact."""
     for news in collect_news_candidates(state)[:12]:
         summary = article_summary(news["title"], news["url"])
         if not summary:
@@ -1590,14 +1603,34 @@ def build_positive_news_post(state):
         source = html.escape(news["url"], quote=True)
         title = html.escape(news["title"])
         post = (
-            "🌿 <b>ХОРОШИЕ НОВОСТИ ИЗ АБХАЗИИ</b>\n\n"
+            "🌿 <b>ИНТЕРЕСНО ОБ АБХАЗИИ</b>\n\n"
             f"<b>{title}</b>\n\n"
             f"{html.escape(summary)}\n\n"
-            f'📰 <a href="{source}">Источник новости</a>\n\n'
+            f'📰 <a href="{source}">Источник</a>\n\n'
             "👉 @VAbkhazii"
         )
         return post, news["hash"]
-    return None, None
+
+    used = set(state.get("used_news", []))
+    start = now_local().date().toordinal() % len(FACTS)
+    for offset in range(len(FACTS)):
+        fact = FACTS[(start + offset) % len(FACTS)]
+        fact_hash = "fact-" + item_hash(fact)
+        if fact_hash in used:
+            continue
+        post = (
+            "📍 <b>ИНТЕРЕСНЫЙ ФАКТ ОБ АБХАЗИИ</b>\n\n"
+            f"{html.escape(fact)}\n\n"
+            "👉 @VAbkhazii"
+        )
+        return post, fact_hash
+
+    fact = FACTS[start]
+    return (
+        "📍 <b>ИНТЕРЕСНЫЙ ФАКТ ОБ АБХАЗИИ</b>\n\n"
+        f"{html.escape(fact)}\n\n"
+        "👉 @VAbkhazii"
+    ), "fact-" + item_hash(fact)
 
 
 def main():
