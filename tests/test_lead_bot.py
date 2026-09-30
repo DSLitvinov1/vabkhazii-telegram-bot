@@ -35,6 +35,17 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertEqual(result["bucket"], "direct")
         self.assertEqual(result["lead_type"], "transfer")
 
+    def test_public_transport_question_with_route_and_time_is_kept_as_warm_transfer(self):
+        result, reason = self.classify(
+            "Добрый день. Подскажите, как добраться из Сухума до Гагры на маршрутке? "
+            "Прилет в Сухум запланирован в 15:15. В это время еще ходят маршрутки и откуда?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["bucket"], "direct")
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(result["temperature"], "warm")
+
     def test_direct_excursion_request_is_kept(self):
         result, reason = self.classify(
             "Ищем индивидуальную экскурсию на Рицу завтра, нас 3 человека."
