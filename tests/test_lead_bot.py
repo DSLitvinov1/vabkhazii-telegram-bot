@@ -46,6 +46,40 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertEqual(result["lead_type"], "transfer")
         self.assertEqual(result["temperature"], "warm")
 
+    def test_bus_question_without_explicit_transfer_word_is_kept_warm(self):
+        result, reason = self.classify(
+            "Подскажите, ходят ли маршрутки из Сухума в Гагру вечером?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_airport_local_transport_question_is_kept_warm(self):
+        result, reason = self.classify(
+            "Прилетаю в Сухум в 15:15. Как добраться от аэропорта до автовокзала?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_specific_route_interest_is_kept_as_warm_excursion(self):
+        result, reason = self.classify(
+            "Подскажите, как попасть на Рицу завтра? Нас двое."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_plain_route_chatter_stays_filtered(self):
+        result, reason = self.classify(
+            "Маршрутка Сухум Гагра идет по этой дороге, около 30 км."
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
     def test_direct_excursion_request_is_kept(self):
         result, reason = self.classify(
             "Ищем индивидуальную экскурсию на Рицу завтра, нас 3 человека."
