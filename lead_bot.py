@@ -1997,7 +1997,7 @@ def looks_like_route_discussion_only(text):
     concrete_trip = (
         len(detect_all_places(text)) >= 2
         and ("?" in text or "подскаж" in lower)
-        and (detect_time_hint(text) or has_future_trip_signal(text))
+        and (detect_time_hint(text) or has_future_trip_signal(text) or any(word in lower for word in ["маршрут", "автобус", "такси", "транспорт", "аэропорт", "вокзал"]))
     )
     if route_question and concrete_trip:
         return False
