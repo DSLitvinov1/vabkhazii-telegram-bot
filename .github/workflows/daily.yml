@@ -80,6 +80,10 @@ jobs:
         if: steps.slot.outputs.enabled == 'true' && steps.marker.outputs.cache-hit != 'true'
         run: python -m py_compile bot.py
 
+      - name: Validate seven-sentence facts and Telegram length
+        if: steps.slot.outputs.enabled == 'true' && steps.marker.outputs.cache-hit != 'true'
+        run: python -m unittest discover -s tests -p "test_bot.py" -v
+
       - name: Publish Telegram post
         id: publish
         if: steps.slot.outputs.enabled == 'true' && steps.marker.outputs.cache-hit != 'true'
