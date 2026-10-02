@@ -1460,6 +1460,14 @@ def article_summary(
         return None
 
 
+def verified_fact_text(fact):
+    """Enforce editorial rule: facts must have at least seven full sentences."""
+    count = len(re.findall(r"[.!?](?=\\s|$)", fact.strip()))
+    if count < 7:
+        raise ValueError(f"Abkhazia fact too short: {count} sentences (minimum 7)")
+    return fact
+
+
 def fact_of_day():
     today = now_local().date()
 
@@ -1468,9 +1476,7 @@ def fact_of_day():
         % len(FACTS)
     )
 
-    return FACTS[
-        index
-    ]
+    return verified_fact_text(FACTS[index])
 
 
 def interesting_block(
@@ -1658,7 +1664,7 @@ def build_positive_news_post(state):
     used = set(state.get("used_news", []))
     start = now_local().date().toordinal() % len(FACTS)
     for offset in range(len(FACTS)):
-        fact = FACTS[(start + offset) % len(FACTS)]
+        fact = verified_fact_text(FACTS[(start + offset) % len(FACTS)])
         fact_hash = "fact-" + item_hash(fact)
         if fact_hash in used:
             continue
@@ -1669,7 +1675,7 @@ def build_positive_news_post(state):
         )
         return post, fact_hash
 
-    fact = FACTS[start]
+    fact = verified_fact_text(FACTS[start])
     return (
         "📍 <b>ИНТЕРЕСНЫЙ ФАКТ ОБ АБХАЗИИ</b>\n\n"
         f"{html.escape(fact)}\n\n"
