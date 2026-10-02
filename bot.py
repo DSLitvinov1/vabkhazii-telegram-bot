@@ -1462,7 +1462,7 @@ def article_summary(
 
 def verified_fact_text(fact):
     """Enforce editorial rule: facts must have at least seven full sentences."""
-    count = len(re.findall(r"[.!?](?=\\s|$)", fact.strip()))
+    count = len(re.findall(r"[.!?](?=\s|$)", fact.strip()))
     if count < 7:
         raise ValueError(f"Abkhazia fact too short: {count} sentences (minimum 7)")
     return fact
