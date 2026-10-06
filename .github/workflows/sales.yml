@@ -1,0 +1,32 @@
+name: VAbkhazii Direct Sales Post
+
+on:
+  push:
+    paths:
+      - "sales_post.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vabkhazii-direct-sales
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check script
+        run: python -m py_compile sales_post.py
+      - name: Publish direct sales post
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: "@VAbkhazii"
+        run: python sales_post.py
