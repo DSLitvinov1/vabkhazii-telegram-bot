@@ -2,9 +2,6 @@ name: VAbkhazii Affiliate Travel Post
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "affiliate_post.py"
 
 permissions:
   contents: read
