@@ -8,23 +8,22 @@ channel = os.getenv("TELEGRAM_CHANNEL", "@VAbkhazii")
 if not token:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is not set")
 
-text = """🌍 ЕЩЁ ДВА ПОЛЕЗНЫХ СЕРВИСА ДЛЯ ПУТЕШЕСТВИЯ
+text = """✈️ КАК НЕ ПЕРЕПЛАТИТЬ ЗА БАГАЖ ПРИ ПОКУПКЕ БИЛЕТА
 
-Если хочется не только самостоятельно собирать маршрут, можно посмотреть авторские туры и готовые программы на Youtravel.me:
-https://dorinebeaumont.com/g/6gk4ba6fs6e0e02a444acc54f31e64/?erid=25H8d7vbP8SRTvK4AKHyL7
+Самая частая ошибка — смотреть только на первую цену авиабилета. У дешёвого тарифа багаж может не входить вообще, а добавление чемодана после покупки иногда сильно меняет итоговую стоимость поездки. Перед оплатой проверьте не только килограммы, но и допустимые размеры, количество мест и правила конкретного тарифа. Если летите вдвоём, иногда выгоднее купить один багаж на двоих, чем два расширенных тарифа. Если маршрут со стыковкой, отдельно проверьте правила каждого перевозчика и нужно ли получать багаж между рейсами. Скриншот условий тарифа перед оплатой тоже лишним не будет.
 
-Для зарубежных поездок отдельно можно проверить туристическую страховку EKTA:
-https://ogsib.com/g/92qb79zvwne0e02a444a239505df72/
+Собрали короткий чек-лист, что именно проверять до покупки:
+https://choiceflow-affiliate.onrender.com/bagazh-aviabilet.html?utm_source=telegram&utm_medium=owned&utm_campaign=vabkhazii_baggage
 
-Перед оформлением обязательно проверьте программу тура, условия отмены, территорию действия страховки, исключения и страховую сумму.
+ChoiceFlow — наш новый сервис-подборщик: он помогает сначала разобраться в задаче, а уже потом ведёт к подходящему сервису или покупке.
 
-ℹ️ Партнёрский материал: обе программы одобрены для площадки VAbkhazii. Канал может получить вознаграждение после подтверждённой покупки; цена для пользователя из-за этого не увеличивается."""
+ℹ️ На ChoiceFlow часть внешних ссылок может быть партнёрской. Это отмечается на сайте; цена для пользователя из-за самого факта партнёрской ссылки не увеличивается."""
 
 url = f"https://api.telegram.org/bot{token}/sendMessage"
 payload = urllib.parse.urlencode({
     "chat_id": channel,
     "text": text,
-    "disable_web_page_preview": "true",
+    "disable_web_page_preview": "false",
 }).encode("utf-8")
 
 req = urllib.request.Request(url, data=payload, method="POST")
@@ -34,4 +33,4 @@ with urllib.request.urlopen(req, timeout=30) as resp:
 if not result.get("ok"):
     raise RuntimeError(f"Telegram error: {result}")
 
-print("Affiliate travel post published.")
+print("ChoiceFlow travel content post published.")
