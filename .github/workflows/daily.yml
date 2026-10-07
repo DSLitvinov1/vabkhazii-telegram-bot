@@ -2,7 +2,6 @@ name: VAbkhazii Daily Post
 
 on:
   schedule:
-    - cron: '0 6 * * 1,4'
     - cron: '0 6 * * 3,5'
   workflow_dispatch:
     inputs:
@@ -49,7 +48,7 @@ jobs:
           weekday = now.weekday()
           scheduled = os.environ["EVENT_NAME"] == "schedule"
           mode = ("news" if os.environ.get("EVENT_SCHEDULE") == "0 6 * * 3,5" else "morning") if scheduled else (os.environ.get("INPUT_MODE") or "morning")
-          allowed = (weekday in (0,3) if mode == "morning" else weekday in (2,4))
+          allowed = weekday in (2,4)
           # Do not publish late queued scheduled jobs on an unintended day.
           enabled = allowed
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
