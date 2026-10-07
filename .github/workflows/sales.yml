@@ -1,9 +1,7 @@
 name: VAbkhazii Direct Sales Post
 
 on:
-  push:
-    paths:
-      - "sales_post.py"
+  workflow_dispatch:
 
 permissions:
   contents: read
