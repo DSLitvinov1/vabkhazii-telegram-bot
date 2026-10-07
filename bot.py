@@ -1702,6 +1702,7 @@ def commons_photo_urls(queries, limit=3):
                     "gsrlimit": 12,
                     "prop": "imageinfo",
                     "iiprop": "url|mime|size",
+                    "iiurlwidth": 1600,
                     "format": "json",
                     "formatversion": 2,
                     "origin": "*",
@@ -1717,7 +1718,7 @@ def commons_photo_urls(queries, limit=3):
                 continue
             info = info_list[0]
             mime = (info.get("mime") or "").lower()
-            url = info.get("url")
+            url = info.get("thumburl") or info.get("url")
             width = int(info.get("width") or 0)
             height = int(info.get("height") or 0)
 
@@ -1818,6 +1819,7 @@ def build_positive_news_post(state):
         post = (
             "📍 <b>ИНТЕРЕСНЫЙ ФАКТ ОБ АБХАЗИИ</b>\n\n"
             f"{html.escape(fact)}\n\n"
+            "📷 Фото: Wikimedia Commons\n"
             "👉 @VAbkhazii"
         )
         return post, fact_hash
@@ -1826,6 +1828,7 @@ def build_positive_news_post(state):
     return (
         "📍 <b>ИНТЕРЕСНЫЙ ФАКТ ОБ АБХАЗИИ</b>\n\n"
         f"{html.escape(fact)}\n\n"
+        "📷 Фото: Wikimedia Commons\n"
         "👉 @VAbkhazii"
     ), "fact-" + item_hash(fact)
 
