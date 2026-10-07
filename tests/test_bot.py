@@ -34,6 +34,43 @@ class AbkhaziaContentTests(unittest.TestCase):
                 )
                 self.assertLessEqual(bot.telegram_visible_length(post), 4096)
 
+    def test_every_fact_has_photo_queries(self):
+        self.assertEqual(len(bot.FACT_PHOTO_QUERIES), len(bot.FACTS))
+        for queries in bot.FACT_PHOTO_QUERIES:
+            self.assertGreaterEqual(len(queries), 3)
+            self.assertTrue(all(query.strip() for query in queries))
+
+    def test_fact_album_requires_three_photos(self):
+        with self.assertRaises(ValueError):
+            bot.build_fact_media(
+                "📍 <b>Факт</b>",
+                ["https://example.com/1.jpg", "https://example.com/2.jpg"],
+            )
+
+    def test_fact_album_uses_three_photos_and_first_caption(self):
+        caption = (
+            "📍 <b>ИНТЕРЕСНЫЙ ФАКТ ОБ АБХАЗИИ</b>\n\n"
+            + bot.FACTS[0]
+            + "\n\n👉 @VAbkhazii"
+        )
+        media = bot.build_fact_media(
+            caption,
+            [
+                "https://example.com/1.jpg",
+                "https://example.com/2.jpg",
+                "https://example.com/3.jpg",
+                "https://example.com/4.jpg",
+            ],
+        )
+        self.assertEqual(len(media), 3)
+        self.assertEqual(media[0]["caption"], caption)
+        self.assertEqual(media[0]["parse_mode"], "HTML")
+        self.assertNotIn("caption", media[1])
+        self.assertLessEqual(
+            bot.telegram_visible_length(caption),
+            bot.TELEGRAM_ALBUM_CAPTION_LIMIT,
+        )
+
     def test_fact_rotation_avoids_immediate_repeat(self):
         mock_date = datetime(2026, 10, 2, 9, 0, tzinfo=ZoneInfo("Europe/Moscow"))
         with patch.object(bot, "collect_news_candidates", return_value=[]):
