@@ -51,6 +51,8 @@ TG_URL = (
 )
 
 TELEGRAM_TEXT_LIMIT = 4096
+TELEGRAM_ALBUM_CAPTION_LIMIT = 1024
+COMMONS_API_URL = "https://commons.wikimedia.org/w/api.php"
 
 
 NEWS_QUERIES = [
@@ -314,6 +316,21 @@ FACTS = [
         "Поэтому эффектные фотографии не должны быть причиной подходить к опасному краю. "
         "Наблюдение за водопадами хорошо показывает, насколько живыми и изменчивыми бывают горные ландшафты."
     ),
+]
+
+
+
+FACT_PHOTO_QUERIES = [
+    ("Lake Amtkel Abkhazia", "Amtkel Abkhazia lake", "Amtkel Caucasus"),
+    ("New Athos fortress Abkhazia", "Anacopia fortress Abkhazia", "New Athos Abkhazia"),
+    ("Akarmara Abkhazia", "Akarmara Tkvarcheli", "Akarmara village Abkhazia"),
+    ("Abkhazia mountains coast", "Abkhazia Black Sea mountains", "Abkhazia landscape"),
+    ("Pitsunda pine Abkhazia", "Pitsunda Abkhazia coast", "Pitsunda pine grove"),
+    ("Yupshara canyon Abkhazia", "Yupshara Abkhazia", "road to Lake Ritsa canyon"),
+    ("Sukhumi botanical garden", "Sukhum botanical garden Abkhazia", "Sukhumi Abkhazia garden"),
+    ("Lake Mzy Abkhazia", "Mzy lake Abkhazia", "Mzy Abkhazia mountains"),
+    ("New Athos cave Abkhazia", "Novoafonskaya cave", "New Athos Abkhazia cave"),
+    ("Abkhazia waterfalls", "Gegsky waterfall Abkhazia", "Abkhazia mountain waterfall"),
 ]
 
 
@@ -1654,6 +1671,126 @@ def send_telegram(
         )
 
 
+
+def fact_index_from_hash(fact_hash):
+    for index, fact in enumerate(FACTS):
+        if fact_hash == "fact-" + item_hash(fact):
+            return index
+    return None
+
+
+def fact_photo_queries(fact_hash):
+    index = fact_index_from_hash(fact_hash)
+    if index is None:
+        return ()
+    return FACT_PHOTO_QUERIES[index]
+
+
+def commons_photo_urls(queries, limit=3):
+    urls = []
+    seen = set()
+
+    for query in queries:
+        try:
+            data = get_json(
+                COMMONS_API_URL,
+                {
+                    "action": "query",
+                    "generator": "search",
+                    "gsrsearch": query,
+                    "gsrnamespace": 6,
+                    "gsrlimit": 12,
+                    "prop": "imageinfo",
+                    "iiprop": "url|mime|size",
+                    "format": "json",
+                    "formatversion": 2,
+                    "origin": "*",
+                },
+            )
+        except Exception as exc:
+            print("Commons photo warning:", exc)
+            continue
+
+        for page in data.get("query", {}).get("pages", []):
+            info_list = page.get("imageinfo") or []
+            if not info_list:
+                continue
+            info = info_list[0]
+            mime = (info.get("mime") or "").lower()
+            url = info.get("url")
+            width = int(info.get("width") or 0)
+            height = int(info.get("height") or 0)
+
+            if mime not in {"image/jpeg", "image/png"}:
+                continue
+            if not url or width < 640 or height < 480:
+                continue
+            if url in seen:
+                continue
+
+            seen.add(url)
+            urls.append(url)
+            if len(urls) >= limit:
+                return urls
+
+    return urls
+
+
+def build_fact_media(caption, photo_urls):
+    if telegram_visible_length(caption) > TELEGRAM_ALBUM_CAPTION_LIMIT:
+        raise ValueError("Fact caption exceeds Telegram album caption limit")
+    if len(photo_urls) < 3:
+        raise ValueError("A fact publication requires at least three photos")
+
+    media = []
+    for index, url in enumerate(photo_urls[:3]):
+        item = {"type": "photo", "media": url}
+        if index == 0:
+            item["caption"] = caption
+            item["parse_mode"] = "HTML"
+        media.append(item)
+    return media
+
+
+def send_fact_album(caption, fact_hash):
+    if not BOT_TOKEN:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN is not set")
+
+    queries = fact_photo_queries(fact_hash)
+    if not queries:
+        raise RuntimeError("No photo topic configured for this fact")
+
+    photo_urls = commons_photo_urls(queries, limit=3)
+    media = build_fact_media(caption, photo_urls)
+
+    url = (
+        "https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/sendMediaGroup"
+    )
+    payload = urllib.parse.urlencode(
+        {
+            "chat_id": CHANNEL,
+            "media": json.dumps(media, ensure_ascii=False),
+        }
+    ).encode("utf-8")
+
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=45) as response:
+        result = json.loads(response.read().decode("utf-8"))
+
+    if not result.get("ok"):
+        raise RuntimeError(f"Telegram album error: {result}")
+
+    sent = result.get("result") or []
+    if len(sent) < 3:
+        raise RuntimeError("Telegram returned fewer than three photos")
+
+
 def build_positive_news_post(state):
     """Prefer a fresh positive news item; otherwise publish a compact non-repeating fact."""
     for news in collect_news_candidates(state)[:12]:
@@ -1701,7 +1838,10 @@ def main():
         if not post:
             print("No verified fresh positive news; skipping publication.")
             return
-        send_telegram(post)
+        if news_hash.startswith("fact-"):
+            send_fact_album(post, news_hash)
+        else:
+            send_telegram(post)
         state.setdefault("used_news", []).append(news_hash)
         state["used_news"] = state["used_news"][-50:]
         save_state(state)
