@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: vabkhazii-leads-production
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   leads:
