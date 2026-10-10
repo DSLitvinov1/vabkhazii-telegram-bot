@@ -147,7 +147,7 @@ QUERY_DELAY_SECONDS = 0.20
 CHAIN_WINDOW_HOURS = 6
 
 # Автоматический режим 24/7 через GitHub Actions.
-# Сам workflow запускается каждые 5 минут, а тяжёлые операции выполняются реже.
+# Workflow запускается каждые 15 минут, а тяжёлый глобальный поиск выполняется реже.
 GLOBAL_SEARCH_INTERVAL_MINUTES = 30
 DISCOVERED_SCAN_INTERVAL_MINUTES = 15
 DISCOVERY_REFRESH_INTERVAL_MINUTES = 360
