@@ -1611,7 +1611,8 @@ def is_joined_tourist_chat(chat):
 
     abkhazia_markers = [
         "абхаз", "гагр", "пицунд", "сухум", "афон", "гудаут",
-        "цандрыпш", "псоу", "рица", "мзы", "очамч", "ткуарч",
+        "цандрыпш", "цандрипш", "псоу", "рица", "мзы", "очамч", "ткуарч",
+        "amra", "амра",
     ]
     if any(marker in combined for marker in abkhazia_markers):
         return True
