@@ -121,6 +121,84 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIn("Цандрыпш", lead_bot.detect_all_places(text))
         self.assertIn("Сухум", lead_bot.detect_all_places(text))
 
+    def test_contextual_transfer_price_question_is_kept(self):
+        result, reason = self.classify(
+            "Сколько будет стоить из Сухума в Гагру завтра? Нас трое."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_contextual_transfer_without_word_transfer_is_kept(self):
+        result, reason = self.classify(
+            "Нужно завтра из Пицунды в Сухум, 2 человека. Подскажите по машине."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+
+    def test_one_city_taxi_question_is_kept(self):
+        result, reason = self.classify(
+            "Подскажите такси в Сухуме вечером, нас двое с чемоданами."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+
+    def test_route_price_question_is_kept_as_excursion(self):
+        result, reason = self.classify(
+            "Подскажите, сколько будет стоить съездить на Рицу завтра, нас двое?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_buyer_cost_question_is_not_mistaken_for_seller(self):
+        result, reason = self.classify(
+            "Подскажите стоимость экскурсии на Мзы завтра для двух человек?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+
+    def test_excursion_ad_with_price_is_still_filtered(self):
+        result, reason = self.classify(
+            "Стоимость экскурсии на Рицу 2500 руб. Есть свободные места, бронируйте."
+        )
+        self.assertIsNone(result)
+        self.assertEqual(reason, "seller_or_ad")
+
+    def test_plain_transport_statement_is_not_a_lead(self):
+        result, reason = self.classify(
+            "Маршрутки из Сухума в Гагру ходят весь день."
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
+    def test_price_followup_is_kept_as_chain_context_in_amra(self):
+        self.assertTrue(
+            lead_bot.is_chain_context_message(
+                "Сколько это будет стоить?",
+                "MY:AMRA Абхазия",
+            )
+        )
+
+    def test_alt_tsandripsh_source_context_is_recognized(self):
+        self.assertTrue(
+            lead_bot.has_abkhazia_source_context("Цандрипш поездки")
+        )
+
+    def test_priority_queries_cover_colloquial_demand(self):
+        joined = " ".join(lead_bot.PRIORITY_SEARCH_QUERIES).lower()
+        for marker in ("подскажите такси", "такси сухум", "кто заберет", "нужна экскурсия"):
+            self.assertIn(marker, joined)
+        self.assertLessEqual(
+            len(lead_bot.PRIORITY_SEARCH_QUERIES),
+            lead_bot.GLOBAL_QUERY_BATCH_SIZE,
+        )
+
     def test_direct_excursion_request_is_kept(self):
         result, reason = self.classify(
             "Ищем индивидуальную экскурсию на Рицу завтра, нас 3 человека."
