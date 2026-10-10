@@ -19,17 +19,19 @@ BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN') or os.environ.get('LEADS_BOT_TOKE
 CHAT_ID=os.environ.get('LOGOLEAD_CHAT_ID','')
 
 STATE_VERSION=4
-CLASSIFIER_VERSION=7
+CLASSIFIER_VERSION=8
 STATE_DIR=Path('.lead_state')
 STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
 SEARCH_LIMIT=int(os.environ.get('SEARCH_LIMIT','40'))
+GLOBAL_ROTATING_QUERIES_PER_RUN=int(os.environ.get('GLOBAL_ROTATING_QUERIES_PER_RUN','12'))
 MAX_LEADS_PER_RUN=int(os.environ.get('MAX_LEADS_PER_RUN','25'))
 DELIVERY_MAX_AGE_HOURS=int(os.environ.get('DELIVERY_MAX_AGE_HOURS','24'))
 PENDING_LIMIT=int(os.environ.get('PENDING_LIMIT','500'))
 MIN_SCORE=int(os.environ.get('MIN_SCORE','35'))
 RUN_INTERVAL_MINUTES=int(os.environ.get('RUN_INTERVAL_MINUTES','10'))
 DISCOVERY_INTERVAL_MINUTES=int(os.environ.get('DISCOVERY_INTERVAL_MINUTES','360'))
+DISCOVERY_ROTATING_QUERIES_PER_REFRESH=int(os.environ.get('DISCOVERY_ROTATING_QUERIES_PER_REFRESH','18'))
 GROUP_SCAN_LIMIT=int(os.environ.get('GROUP_SCAN_LIMIT','80'))
 INITIAL_GROUP_SCAN_LIMIT=int(os.environ.get('INITIAL_GROUP_SCAN_LIMIT','180'))
 BACKFILL_GROUPS_PER_RUN=int(os.environ.get('BACKFILL_GROUPS_PER_RUN','1'))
@@ -55,6 +57,11 @@ DISPLAY_TZ_OFFSET=int(os.environ.get('DISPLAY_TZ_OFFSET','3'))
 EXCLUDED_CHAT_USERNAMES={x.strip().lstrip('@').lower() for x in os.environ.get('EXCLUDED_CHAT_USERNAMES','VAbkhaziiLeadsBot').split(',') if x.strip()}
 BUILD_SHA=os.environ.get('GITHUB_SHA','local')[:7]
 
+CORE_SEARCH_QUERIES=[
+    'ищу логопеда','нужен логопед','посоветуйте логопеда','порекомендуйте логопеда',
+    'подскажите логопеда','логопед ребенку','логопед ребёнку','нужен дефектолог',
+    'нужен нейрологопед','ребенок не говорит','ребёнок не говорит','запуск речи',
+]
 SEARCH_QUERIES=[
     'ищу логопеда','ищем логопеда','нужен логопед','логопед нужен',
     'нужен логопед ребенку','нужен логопед ребёнку','логопед ребенку','логопед ребёнку',
@@ -63,6 +70,8 @@ SEARCH_QUERIES=[
     'где найти логопеда','контакты логопеда','логопед для ребенка','логопед для ребёнка',
     'логопед онлайн','ищу логопеда онлайн','нужен дефектолог','дефектолог нужен',
     'посоветуйте дефектолога','порекомендуйте дефектолога','нужен нейрологопед',
+    'нужен специалист по речи','посоветуйте специалиста ребенок не говорит','куда вести ребенок не говорит',
+    'не получается звук р','не получается звук л','поставить звук р','поставить звук л',
     'ребенок не говорит','ребёнок не говорит','не говорит предложениями',
     'плохо говорит ребенок','плохо говорит ребёнок','не выговаривает р',
     'не выговаривает л','не выговаривает звуки','запуск речи','ЗРР логопед',
@@ -71,6 +80,10 @@ SEARCH_QUERIES=[
     'ребенок заикается','ребёнок заикается','говорит невнятно ребенок','говорит невнятно ребёнок',
     'путает буквы ребенок','путает буквы ребёнок','задержка речи ребенок','задержка речи ребёнок',
     'логопед','дефектолог','нейрологопед',
+]
+CORE_DISCOVERY_QUERIES=[
+    'логопед родители чат','мамы дети развитие речи','запуск речи родители',
+    'ЗРР родители чат','дефектолог родители','мамы дошкольников чат',
 ]
 DISCOVERY_QUERIES=[
     'логопед родители чат','мамы дети развитие речи','запуск речи родители',
@@ -83,8 +96,11 @@ DISCOVERY_QUERIES=[
     'мамы самара чат','мамы уфа чат','мамы ростов чат','мамы воронеж чат','мамы пермь чат',
     'мамы тюмень чат','мамы челябинск чат','мамы нижний новгород чат','мамы омск чат',
     'мамы волгоград чат','мамы минск чат','мамы алматы чат','мамы астана чат',
+    'мамы саратов чат','мамы ижевск чат','мамы оренбург чат','мамы иркутск чат',
+    'мамы хабаровск чат','мамы владивосток чат','мамы калининград чат','мамы ярославль чат',
+    'мамы тула чат','мамы рязань чат','мамы барнаул чат','мамы ставрополь чат',
 ]
-DEEP_GROUP_QUERIES=['логопед','дефектолог','нейрологопед','не говорит','не выговаривает','зрр','зпрр','картавит','шепелявит','заикается','задержка речи','запуск речи','дисграфия','говорит невнятно','мало слов','путает буквы','ошибки на письме']
+DEEP_GROUP_QUERIES=['логопед','дефектолог','нейрологопед','нужен специалист','не говорит','не выговаривает','звук р','звук л','поставить звук','зрр','зпрр','картавит','шепелявит','заикается','задержка речи','запуск речи','дисграфия','говорит невнятно','мало слов','путает буквы','ошибки на письме']
 COMMERCIAL_CHAT_MARKERS=[
     'услуги логопеда','логопедический центр','школа логопеда',
     'курсы логопедов','вакансии логопед','обучение логопедов',
@@ -122,6 +138,53 @@ def load_state():
 def save_state(state):
     state['version']=STATE_VERSION
     STATE_FILE.write_text(json.dumps(state,ensure_ascii=False,indent=2),'utf-8')
+
+def select_search_queries(state):
+    core=[]
+    for query in CORE_SEARCH_QUERIES:
+        if query in SEARCH_QUERIES and query not in core:
+            core.append(query)
+    rotating=[q for q in SEARCH_QUERIES if q not in core]
+    if not rotating or GLOBAL_ROTATING_QUERIES_PER_RUN<=0:
+        state['query_cursor']=0
+        return core
+    count=min(GLOBAL_ROTATING_QUERIES_PER_RUN,len(rotating))
+    cursor=int(state.get('query_cursor',0) or 0)%len(rotating)
+    batch=[rotating[(cursor+i)%len(rotating)] for i in range(count)]
+    state['query_cursor']=(cursor+count)%len(rotating)
+    return core+batch
+
+def select_discovery_queries(state):
+    core=[]
+    for query in CORE_DISCOVERY_QUERIES:
+        if query in DISCOVERY_QUERIES and query not in core:
+            core.append(query)
+    rotating=[q for q in DISCOVERY_QUERIES if q not in core]
+    if not rotating or DISCOVERY_ROTATING_QUERIES_PER_REFRESH<=0:
+        state['discovery_query_cursor']=0
+        return core
+    count=min(DISCOVERY_ROTATING_QUERIES_PER_REFRESH,len(rotating))
+    cursor=int(state.get('discovery_query_cursor',0) or 0)%len(rotating)
+    batch=[rotating[(cursor+i)%len(rotating)] for i in range(count)]
+    state['discovery_query_cursor']=(cursor+count)%len(rotating)
+    return core+batch
+
+def candidate_priority(item,now=None):
+    now=now or datetime.now(timezone.utc)
+    published=item[1]
+    if published.tzinfo is None:
+        published=published.replace(tzinfo=timezone.utc)
+    age_hours=max(0,(now-published).total_seconds()/3600)
+    if age_hours<=1: freshness=10
+    elif age_hours<=3: freshness=8
+    elif age_hours<=6: freshness=5
+    elif age_hours<=12: freshness=3
+    else: freshness=0
+    source=(item[5] or '').lower()
+    if source.startswith('profi.ru'): source_bonus=6
+    elif source.startswith('kwork'): source_bonus=3
+    else: source_bonus=0
+    return (item[0]+freshness+source_bonus,published.timestamp())
 
 def message_key(chat_id,msg_id):
     chat_ref=str(chat_id).strip().lstrip('@').lower()
@@ -390,7 +453,9 @@ async def discover_public_groups(client,state,now):
 
     keep=max(0,GROUP_CACHE_LIMIT-40)
     groups=dict(list(cached.items())[:keep])
-    for query in DISCOVERY_QUERIES:
+    discovery_queries=select_discovery_queries(state)
+    print('DISCOVERY_QUERY_SET',len(discovery_queries),'OF',len(DISCOVERY_QUERIES),'CURSOR',state.get('discovery_query_cursor',0))
+    for query in discovery_queries:
         try:
             result=await client(SearchRequest(q=query,limit=20))
             for chat in result.chats:
@@ -475,7 +540,9 @@ async def main():
         print('PENDING_RESTORED',len(restored_pending))
     found.extend(restored_pending)
 
-    for query in SEARCH_QUERIES:
+    active_queries=select_search_queries(state)
+    print('GLOBAL_QUERY_SET',len(active_queries),'OF',len(SEARCH_QUERIES),'CURSOR',state.get('query_cursor',0))
+    for query in active_queries:
         try:
             async for message in client.iter_messages(None,search=query,limit=SEARCH_LIMIT):
                 if not message.message or not message.date:
@@ -726,7 +793,11 @@ async def main():
             market_due=True
     try:
         market_items=await asyncio.to_thread(collect_markets,MAX_AGE_HOURS) if market_due else []
-        print('MARKET_ITEMS',len(market_items))
+        market_sources={}
+        for item in market_items:
+            source=(item.get('source') or 'Marketplace').split(' · ',1)[0]
+            market_sources[source]=market_sources.get(source,0)+1
+        print('MARKET_ITEMS',len(market_items),'BY_SOURCE',json.dumps(market_sources,ensure_ascii=False,sort_keys=True))
         for item in market_items:
             stats['market_checked']+=1
             key=hashlib.sha256(item['url'].encode()).hexdigest()
@@ -785,7 +856,7 @@ async def main():
 
     found=merge_unique(found)
     found=[item for item in found if item[0]>=MIN_SCORE and item[7] not in sent_keys]
-    found.sort(key=lambda item:(item[0],item[1]),reverse=True)
+    found.sort(key=lambda item:candidate_priority(item,now),reverse=True)
 
     sent=0
     failed=0
@@ -822,7 +893,7 @@ async def main():
         print('DELIVERY_PAUSED','PENDING',len(remaining))
 
     remaining=merge_unique([item for item in remaining if item[7] not in sent_keys])
-    remaining.sort(key=lambda item:(item[0],item[1]),reverse=True)
+    remaining.sort(key=lambda item:candidate_priority(item,now),reverse=True)
     state['pending']=[candidate_to_pending(item) for item in remaining[:PENDING_LIMIT]]
     print('PENDING_STATS',json.dumps(pending_stats(state['pending']),ensure_ascii=False))
     if ENABLE_FEEDBACK:
