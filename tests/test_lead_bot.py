@@ -284,6 +284,21 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIsNotNone(reason)
 
+    def test_joined_abkhazia_transfer_group_is_scanned(self):
+        chat = SimpleNamespace(
+            title="Трансфер Абхазия | Сухум Гагра",
+            username="abhazia_transfer_chat",
+            broadcast=False,
+        )
+        self.assertTrue(lead_bot.is_joined_tourist_chat(chat))
+
+    def test_seller_ad_inside_service_group_is_filtered(self):
+        result, reason = self.classify(
+            "Предлагаю трансфер по Абхазии. Есть свободные места, пишите в личку."
+        )
+        self.assertIsNone(result)
+        self.assertEqual(reason, "seller_or_ad")
+
     def test_joined_real_estate_chat_is_rejected(self):
         chat = SimpleNamespace(
             title="Аренда недвижимости | Абхазия-Сочи",
