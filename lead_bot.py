@@ -986,6 +986,8 @@ ABKHAZIA_CONTEXT_PHRASES = [
     "лдза", "лидза", "гал", "илор", "каман", "дранд", "бедиа", "бедий",
     "алахадз", "бзып", "багрипш", "холодная речка", "мюссер", "миуссер",
     "лыхны", "приморск", "агудзер", "гулрып", "гулрип", "кындыг", "тамыш",
+    "sukhum", "sukhumi", "gagra", "pitsunda", "gudauta",
+    "novy afon", "new athos", "tsandrypsh", "tsandripsh", "gantiadi",
 ]
 
 TRANSFER_PHRASES = [
