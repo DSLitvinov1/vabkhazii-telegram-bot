@@ -139,7 +139,7 @@ STATE_DIR = Path(".lead_state")
 STATE_FILE = STATE_DIR / "state.json"
 
 MAX_AGE_HOURS = 72
-SEARCH_LIMIT = 35
+SEARCH_LIMIT = 55
 CHAT_SCAN_LIMIT = 700
 # Do not discard valid leads just because a run found many.
 MAX_LEADS_PER_RUN = None
@@ -151,14 +151,14 @@ CHAIN_WINDOW_HOURS = 6
 # Workflow запускается каждые 15 минут, а тяжёлый глобальный поиск выполняется реже.
 GLOBAL_SEARCH_INTERVAL_MINUTES = 30
 DISCOVERED_SCAN_INTERVAL_MINUTES = 15
-DISCOVERY_REFRESH_INTERVAL_MINUTES = 360
+DISCOVERY_REFRESH_INTERVAL_MINUTES = 180
 SESSION_WARNING_INTERVAL_MINUTES = 360
 
 
 # Автопоиск новых публичных туристических групп Telegram.
 DISCOVERY_ENABLED = True
-DISCOVERY_LIMIT_PER_QUERY = 20
-MAX_DISCOVERED_CHATS = 60
+DISCOVERY_LIMIT_PER_QUERY = 30
+MAX_DISCOVERED_CHATS = 110
 DISCOVERY_CHAT_SCAN_LIMIT = 400
 DISCOVERY_QUERY_DELAY_SECONDS = 0.35
 
@@ -170,7 +170,7 @@ CIS_ENABLED = True
 # уже вступил пользовательский Telegram-аккаунт. Бот НЕ вступает никуда сам,
 # не читает личные переписки и не сканирует обычные нетуристические группы.
 MY_CHATS_ENABLED = True
-MY_CHATS_MAX_GROUPS = 80
+MY_CHATS_MAX_GROUPS = 140
 MY_CHATS_SCAN_LIMIT = 700
 
 # Публичные внешние площадки/форумы. Проверяются реже Telegram,
@@ -333,6 +333,20 @@ DISCOVERY_QUERIES = [
     "Гагра поездки",
     "Цандрыпш чат",
     "Цандрипш чат",
+    "Абхазия такси чат",
+    "Абхазия трансфер чат",
+    "Абхазия экскурсии чат",
+    "Сухум такси",
+    "Гагра такси",
+    "Пицунда такси",
+    "Новый Афон такси",
+    "Сухум экскурсии чат",
+    "Гагра экскурсии чат",
+    "Пицунда экскурсии чат",
+    "попутчики Сухум",
+    "попутчики Гагра",
+    "поездки Сухум Гагра",
+    "как добраться Абхазия чат",
 
     # СНГ: группы путешественников и попутчиков.
     # В общих СНГ-группах сообщение всё равно обязано иметь контекст Абхазии.
@@ -361,9 +375,13 @@ DISCOVERY_QUERIES = [
 
 # Такие группы не добавляем в автопоиск: это обычно витрины продавцов.
 COMMERCIAL_CHAT_MARKERS = [
-    "трансфер", "экскурсии", "экскурсия", "гид", "такси",
-    "аренда авто", "аренда машин", "бронирование", "туроператор",
-    "турагентство", "туры по абхазии", "автопарк",
+    # Block only clearly commercial storefronts. Generic words such as
+    # «такси», «трансфер» or «экскурсии» are allowed because service-discussion
+    # groups often contain real buyer requests; seller messages are filtered later.
+    "аренда авто", "аренда машин", "туроператор", "турагентство",
+    "туры по абхазии официальный", "экскурсионное бюро",
+    "наш автопарк", "служба такси", "заказ такси 24",
+    "бронирование отелей",
 ]
 
 IRRELEVANT_CHAT_MARKERS = [
@@ -597,7 +615,7 @@ PRIORITY_SEARCH_QUERIES = [
     "как попасть Рица",
 ]
 
-GLOBAL_QUERY_BATCH_SIZE = 42
+GLOBAL_QUERY_BATCH_SIZE = 54
 
 
 # =========================================================
@@ -740,7 +758,9 @@ SERVICE_NOUNS = [
 SERVICE_REQUEST_WORDS = [
     "нуж", "ищ", "заказ", "кто может", "кто возит", "кто свозит", "кто отвез", "кто довез",
     "кто забер", "кто встрет", "сколько стоит", "сколько будет стоить", "цена", "стоимость",
-    "есть ли", "можно ли", "можно заказать", "подскаж", "посоветуйте гида", "порекомендуйте гида",
+    "есть ли", "можно ли", "можно заказать", "подскаж", "посовет", "порекоменду",
+    "какие экскурсии", "какую экскурсию", "где экскурсия",
+    "посоветуйте гида", "порекомендуйте гида",
 ]
 
 ROUTE_DISCUSSION_MARKERS = [
