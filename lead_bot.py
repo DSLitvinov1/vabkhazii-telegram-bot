@@ -1565,6 +1565,9 @@ def has_abkhazia_source_context(source_context):
         return False
 
     lower = normalize(str(source_context)).lower()
+    if has_abkhazia_context(lower):
+        return True
+
     source_markers = [
         "абхаз", "гагра", "пицунд", "сухум", "сухуми",
         "новый афон", "гудаут", "очамчир", "очамчыр",
@@ -1651,6 +1654,9 @@ def is_discovery_candidate_chat(chat):
     title = (getattr(chat, "title", None) or "").lower()
     combined = f"{title} {username}"
 
+    if has_abkhazia_context(combined):
+        return True
+
     if username in {name.lower() for name in TARGET_CHATS}:
         return False
 
@@ -1701,6 +1707,9 @@ def is_joined_tourist_chat(chat):
         return False
 
     combined = f"{title} {username}".lower()
+
+    if has_abkhazia_context(combined):
+        return True
 
     # Явно нерелевантные сообщества не сканируем.
     # Чаты про трансферы/такси/экскурсии не блокируем целиком: в них бывают
