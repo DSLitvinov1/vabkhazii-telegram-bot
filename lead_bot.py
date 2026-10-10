@@ -2430,7 +2430,8 @@ def classify_lead_detailed(text, source_context=""):
     if looks_like_route_discussion_only(text):
         return None, "route_discussion_only"
 
-    direct_intent = has_explicit_service_request(text)
+    explicit_intent = has_explicit_service_request(text)
+    direct_intent = explicit_intent
     contextual_type = infer_contextual_service_intent(text)
     warm_transport_intent = contextual_type == "transfer" and not direct_intent
     warm_excursion_intent = contextual_type == "excursion" and not direct_intent
@@ -2473,7 +2474,13 @@ def classify_lead_detailed(text, source_context=""):
         return None, "unknown_service_type"
 
     score = 55
-    reasons = ["автор — человек", "прямой запрос услуги"]
+    reasons = ["автор — человек"]
+    if explicit_intent:
+        reasons.append("прямой запрос услуги")
+    elif contextual_type:
+        reasons.append("скрытый коммерческий интерес")
+    else:
+        reasons.append("нестандартный запрос услуги")
 
     cis_origin = detect_cis_origin(text, source_context)
     if cis_origin:
