@@ -2111,7 +2111,10 @@ def infer_contextual_service_intent(text):
 
     price_signal = any(
         marker in lower
-        for marker in ["сколько", "цена", "стоимость", "почем", "почём"]
+        for marker in [
+            "сколько стоит", "сколько будет стоить",
+            "цена", "стоимость", "почем", "почём",
+        ]
     )
     trip_detail = bool(
         detect_date_hint(text)
