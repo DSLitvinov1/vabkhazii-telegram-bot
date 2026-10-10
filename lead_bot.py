@@ -2138,41 +2138,30 @@ def has_explicit_service_request(text):
 
 
 def infer_contextual_service_intent(text):
-    """Infer useful buyer intent from the whole message, not one exact phrase."""
+    """Infer buyer intent from the whole message, including terse chat-style requests."""
     lower = normalize(text).lower()
     places = detect_all_places(text)
     route = detect_route(text)
 
-    buyer_signal = (
-        "?" in text
-        or any(
-            marker in lower
-            for marker in [
-                "подскаж", "посовет", "сколько", "цена", "стоимость",
-                "нужен", "нужна", "нужно", "надо", "ищу", "ищем",
-                "хочу", "хотим", "кто может", "кто отвез", "кто довез",
-                "кто забер", "кто встрет", "есть ли", "есть машина",
-                "можно ли", "как добраться", "как доехать", "как уехать",
-                "как попасть", "как съездить", "во сколько", "до скольки",
-            ]
-        )
-    )
-    if not buyer_signal:
-        return None
-
-    price_signal = any(
-        marker in lower
-        for marker in [
-            "сколько стоит", "сколько будет стоить",
-            "цена", "стоимость", "почем", "почём",
-        ]
-    )
-    trip_detail = bool(
+    people = detect_people(text)
+    has_when = bool(
         detect_date_hint(text)
         or detect_time_hint(text)
-        or detect_people(text)
-        or detect_baggage(text)
+        or detect_urgency(text)
         or has_future_trip_signal(text)
+    )
+    has_trip_detail = bool(has_when or people or detect_baggage(text))
+
+    request_word = any(
+        marker in lower
+        for marker in [
+            "подскаж", "посовет", "порекоменду", "сколько", "цена", "стоимость",
+            "нужен", "нужна", "нужно", "надо", "ищу", "ищем",
+            "хочу", "хотим", "кто может", "кто отвез", "кто довез",
+            "кто забер", "кто встрет", "есть ли", "есть машина",
+            "можно ли", "как добраться", "как доехать", "как уехать",
+            "как попасть", "как съездить", "во сколько", "до скольки",
+        ]
     )
 
     transport_signal = any(
@@ -2186,18 +2175,47 @@ def infer_contextual_service_intent(text):
         ]
     )
 
-    # Две точки маршрута + намерение ехать/узнать цену — полезный трансферный спрос,
-    # даже если человек не написал слово «трансфер».
+    strong_price_signal = any(
+        marker in lower
+        for marker in [
+            "сколько стоит", "сколько будет стоить",
+            "цена", "стоимость", "почем", "почём",
+        ]
+    )
+    terse_route_price = len(places) >= 2 and "сколько" in lower
+
+    # Chat-style requests often omit verbs entirely:
+    # «Сухум — Гагра завтра, 2 человека».
+    implicit_transport_request = (
+        len(places) >= 2
+        and has_trip_detail
+        and (
+            people is not None
+            or has_when
+            or detect_baggage(text)
+        )
+    )
+
+    buyer_signal = (
+        "?" in text
+        or request_word
+        or terse_route_price
+        or implicit_transport_request
+    )
+    if not buyer_signal:
+        return None
+
     if len(places) >= 2 and (
-        transport_signal or price_signal or trip_detail
+        transport_signal
+        or strong_price_signal
+        or terse_route_price
+        or implicit_transport_request
     ):
         return "transfer"
 
-    # Одна конкретная точка + явный транспортный вопрос также полезна:
-    # «подскажите такси в Сухуме», «как уехать от аэропорта?».
     if places and transport_signal and (
-        price_signal
-        or trip_detail
+        strong_price_signal
+        or has_trip_detail
         or "?" in text
         or "подскаж" in lower
         or "нуж" in lower
@@ -2205,11 +2223,10 @@ def infer_contextual_service_intent(text):
     ):
         return "transfer"
 
-    # Аэропорт/вокзал/граница могут быть второй точкой, написанной разговорно.
     if transport_signal and any(
         marker in lower
         for marker in ["аэропорт", "вокзал", "автовокзал", "границ", "псоу"]
-    ) and (places or trip_detail):
+    ) and (places or has_trip_detail):
         return "transfer"
 
     excursion_interest = any(
@@ -2218,28 +2235,34 @@ def infer_contextual_service_intent(text):
             "экскурс", "гид", "как попасть", "как съездить", "как поехать",
             "хочу на ", "хотим на ", "хочу в ", "хотим в ",
             "кто возит", "кто свозит", "можно ли попасть", "можно ли поехать",
-            "подскаж", "сколько", "цена", "стоимость",
+            "подскаж", "посовет", "порекоменду", "сколько", "цена", "стоимость",
         ]
     )
-    if route and excursion_interest and (
-        trip_detail or price_signal or "?" in text
+    implicit_excursion_request = bool(
+        route
+        and has_trip_detail
+        and (people is not None or has_when)
+    )
+    if route and (
+        (excursion_interest and (has_trip_detail or strong_price_signal or "?" in text))
+        or implicit_excursion_request
     ):
         return "excursion"
 
-    # Скрытый экскурсионный спрос без названия конкретного маршрута:
-    # «куда съездить завтра из Гагры, нас четверо».
     generic_excursion_interest = any(
         marker in lower
         for marker in [
             "куда поехать", "куда съездить", "куда можно поехать",
             "куда можно съездить", "что посмотреть", "что посетить",
+            "какие экскурсии", "какую экскурсию",
             "посоветуйте маршрут", "подскажите маршрут",
         ]
     )
-    if generic_excursion_interest and places and trip_detail:
+    if generic_excursion_interest and places and has_trip_detail:
         return "excursion"
 
     return None
+
 
 
 def looks_like_route_discussion_only(text):
