@@ -226,6 +226,8 @@ EXTERNAL_SOURCES = [
         "search_queries": [
             'site:tripadvisor.ru inurl:ShowTopic Абхазия экскурсия since:month',
             'site:tripadvisor.ru inurl:ShowTopic Абхазия трансфер since:month',
+            'site:tripadvisor.ru inurl:ShowTopic Абхазия как добраться since:month',
+            'site:tripadvisor.ru inurl:ShowTopic Сухум Гагра такси since:month',
             'site:tripadvisor.ru inurl:ShowTopic Гагра Пицунда Сухум Новый Афон Рица since:month',
         ],
     },
@@ -240,6 +242,8 @@ EXTERNAL_SOURCES = [
             'site:babyblog.ru inurl:community/travel/post Абхазия since:month',
             'site:babyblog.ru inurl:community/travel/post Гагра Пицунда Сухум Новый Афон since:month',
             'site:babyblog.ru inurl:community/travel/post Абхазия с детьми since:month',
+            'site:babyblog.ru inurl:community/travel/post Абхазия как добраться since:month',
+            'site:babyblog.ru inurl:community/travel/post Сухум Гагра такси since:month',
         ],
     },
     {
@@ -253,6 +257,9 @@ EXTERNAL_SOURCES = [
             'site:vk.com/wall Абхазия "ищем экскурсию"',
             'site:vk.com/wall Абхазия "нужен гид"',
             'site:vk.com/wall Абхазия "нужен трансфер"',
+            'site:vk.com/wall Абхазия "как добраться"',
+            'site:vk.com/wall Абхазия "подскажите такси"',
+            'site:vk.com/wall Сухум Гагра такси',
             'site:vk.com/topic Абхазия "посоветуйте экскурсию"',
         ],
     },
@@ -267,6 +274,8 @@ EXTERNAL_SOURCES = [
             'site:pikabu.ru/story/ Абхазия "нужен гид"',
             'site:pikabu.ru/story/ Абхазия "экскурсию" "ищем"',
             'site:pikabu.ru/story/ Абхазия "трансфер"',
+            'site:pikabu.ru/story/ Абхазия "как добраться"',
+            'site:pikabu.ru/story/ Сухум Гагра такси',
         ],
     },
     {
@@ -278,6 +287,10 @@ EXTERNAL_SOURCES = [
         "path_regex": r"/(?:s/)?[^/]+/\d+",
         "search_queries": [
             'site:t.me Абхазия "нужен трансфер"',
+            'site:t.me Абхазия "подскажите такси"',
+            'site:t.me Абхазия "как добраться"',
+            'site:t.me Сухум Гагра такси',
+            'site:t.me Сухум Цандрипш такси',
             'site:t.me Абхазия "ищем трансфер"',
             'site:t.me Абхазия "ищем экскурсию"',
             'site:t.me Абхазия "нужен гид"',
