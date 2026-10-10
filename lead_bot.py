@@ -3481,6 +3481,37 @@ async def message_to_candidate(
         bump_stat(stats, "commercial_sender")
         return None
 
+    # Если человек отвечает на своё предыдущее сообщение, используем оба текста
+    # для понимания контекста. Чужие ответы не приписываем автору лида.
+    if allow_reply_lookup and getattr(message, "reply_to_msg_id", None):
+        try:
+            replied = await message.get_reply_message()
+        except Exception:
+            replied = None
+
+        if replied is not None:
+            try:
+                replied_sender = await replied.get_sender()
+            except Exception:
+                replied_sender = None
+
+            same_sender = (
+                getattr(replied_sender, "id", None) is not None
+                and getattr(replied_sender, "id", None) == getattr(sender, "id", None)
+            )
+            replied_text = normalize(getattr(replied, "message", ""))
+            replied_date = getattr(replied, "date", None)
+            if replied_date and replied_date.tzinfo is None:
+                replied_date = replied_date.replace(tzinfo=timezone.utc)
+
+            recent_reply = bool(
+                replied_date
+                and date - replied_date <= timedelta(hours=CHAIN_WINDOW_HOURS)
+                and date >= replied_date
+            )
+            if same_sender and replied_text and recent_reply and replied_text not in text:
+                text = replied_text + "\n" + text
+
     unique_id = f"{getattr(chat, 'id', '')}:{message.id}"
     if unique_id in state.get("seen", []):
         bump_stat(stats, "duplicate")
