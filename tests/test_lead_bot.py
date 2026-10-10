@@ -177,6 +177,24 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIsNotNone(reason)
 
+    def test_price_followup_is_kept_in_trusted_generic_tourist_chat(self):
+        self.assertTrue(
+            lead_bot.is_chain_context_message(
+                "Сколько это будет стоить?",
+                "MY:Свободное общение",
+                trusted_source=True,
+            )
+        )
+
+    def test_empty_chatter_is_not_kept_even_in_trusted_chat(self):
+        self.assertFalse(
+            lead_bot.is_chain_context_message(
+                "Спасибо большое",
+                "MY:Свободное общение",
+                trusted_source=True,
+            )
+        )
+
     def test_price_followup_is_kept_as_chain_context_in_amra(self):
         self.assertTrue(
             lead_bot.is_chain_context_message(
