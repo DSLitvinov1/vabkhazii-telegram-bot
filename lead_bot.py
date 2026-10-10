@@ -2059,10 +2059,99 @@ def has_explicit_service_request(text):
     return False
 
 
+def infer_contextual_service_intent(text):
+    """Infer useful buyer intent from the whole message, not one exact phrase."""
+    lower = normalize(text).lower()
+    places = detect_all_places(text)
+    route = detect_route(text)
+
+    buyer_signal = (
+        "?" in text
+        or any(
+            marker in lower
+            for marker in [
+                "подскаж", "посовет", "сколько", "цена", "стоимость",
+                "нужен", "нужна", "нужно", "надо", "ищу", "ищем",
+                "хочу", "хотим", "кто может", "кто отвез", "кто довез",
+                "кто забер", "кто встрет", "есть ли", "есть машина",
+                "можно ли", "как добраться", "как доехать", "как уехать",
+                "как попасть", "как съездить", "во сколько", "до скольки",
+            ]
+        )
+    )
+    if not buyer_signal:
+        return None
+
+    price_signal = any(
+        marker in lower
+        for marker in ["сколько", "цена", "стоимость", "почем", "почём"]
+    )
+    trip_detail = bool(
+        detect_date_hint(text)
+        or detect_time_hint(text)
+        or detect_people(text)
+        or detect_baggage(text)
+        or has_future_trip_signal(text)
+    )
+
+    transport_signal = any(
+        marker in lower
+        for marker in [
+            "такси", "трансфер", "машин", "водител", "маршрут",
+            "автобус", "минивэн", "минивен", "микроавтобус",
+            "аэропорт", "вокзал", "автовокзал", "границ",
+            "доехать", "добраться", "уехать", "отвез", "довез",
+            "забер", "забрат", "привез", "встрет",
+        ]
+    )
+
+    # Две точки маршрута + намерение ехать/узнать цену — полезный трансферный спрос,
+    # даже если человек не написал слово «трансфер».
+    if len(places) >= 2 and (
+        transport_signal or price_signal or trip_detail
+    ):
+        return "transfer"
+
+    # Одна конкретная точка + явный транспортный вопрос также полезна:
+    # «подскажите такси в Сухуме», «как уехать от аэропорта?».
+    if places and transport_signal and (
+        price_signal
+        or trip_detail
+        or "?" in text
+        or "подскаж" in lower
+        or "нуж" in lower
+        or "ищ" in lower
+    ):
+        return "transfer"
+
+    # Аэропорт/вокзал/граница могут быть второй точкой, написанной разговорно.
+    if transport_signal and any(
+        marker in lower
+        for marker in ["аэропорт", "вокзал", "автовокзал", "границ", "псоу"]
+    ) and (places or trip_detail):
+        return "transfer"
+
+    excursion_interest = any(
+        marker in lower
+        for marker in [
+            "экскурс", "гид", "как попасть", "как съездить", "как поехать",
+            "хочу на ", "хотим на ", "хочу в ", "хотим в ",
+            "кто возит", "кто свозит", "можно ли попасть", "можно ли поехать",
+            "подскаж", "сколько", "цена", "стоимость",
+        ]
+    )
+    if route and excursion_interest and (
+        trip_detail or price_signal or "?" in text
+    ):
+        return "excursion"
+
+    return None
+
+
 def looks_like_route_discussion_only(text):
     """Обсуждение дороги/расстояния без запроса услуги не является лидом."""
     lower = normalize(text).lower()
-    if has_explicit_service_request(text):
+    if has_explicit_service_request(text) or infer_contextual_service_intent(text):
         return False
 
     # Не теряем тёплый трансферный спрос: турист спрашивает, как добраться
@@ -2290,42 +2379,10 @@ def classify_lead_detailed(text, source_context=""):
         return None, "route_discussion_only"
 
     direct_intent = has_explicit_service_request(text)
-
-    # Тёплый скрытый спрос на трансфер: конкретный маршрут + вопрос как добраться
-    # + время/будущая поездка. Такие запросы ценны даже если человек сначала
-    # спрашивает про маршрутку или автобус.
-    warm_transport_intent = (
-        (len(detect_all_places(text)) >= 2 or (len(detect_all_places(text)) >= 1 and any(word in lower for word in ["аэропорт", "вокзал", "автовокзал", "прилет", "приезж", "уезж", "выезж"])))
-        and (
-            any(
-                phrase in lower
-                for phrase in [
-                    "как добраться", "как доехать", "на чем добраться", "на чём добраться",
-                    "как уехать", "чем доехать", "чем уехать", "ходит ли", "ходят ли",
-                    "есть ли", "можно ли", "откуда", "во сколько", "до скольки",
-                ]
-            )
-            or ("?" in text and any(word in lower for word in ["маршрут", "автобус", "такси", "транспорт", "аэропорт", "вокзал", "автовокзал"]))
-        )
-        and ("?" in text or "подскаж" in lower)
-        and (detect_time_hint(text) or has_future_trip_signal(text) or any(word in lower for word in ["маршрут", "автобус", "такси", "транспорт", "аэропорт", "вокзал", "автовокзал"]))
-    )
-    if warm_transport_intent:
-        direct_intent = True
-
-    warm_excursion_intent = bool(
-        detect_route(text)
-        and any(
-            phrase in lower
-            for phrase in [
-                "как попасть", "как съездить", "как поехать",
-                "хочу на ", "хотим на ", "хочу в ", "хотим в ",
-                "кто возит", "кто свозит", "можно ли попасть",
-                "можно ли поехать",
-            ]
-        )
-    )
-    if warm_excursion_intent:
+    contextual_type = infer_contextual_service_intent(text)
+    warm_transport_intent = contextual_type == "transfer" and not direct_intent
+    warm_excursion_intent = contextual_type == "excursion" and not direct_intent
+    if contextual_type:
         direct_intent = True
 
     # Нестандартный запрос «нужен человек с правами» всё равно потенциально
@@ -2356,10 +2413,8 @@ def classify_lead_detailed(text, source_context=""):
         return None, "no_direct_service_intent"
 
     lead_type = detect_lead_type(text)
-    if warm_transport_intent:
-        lead_type = "transfer"
-    elif warm_excursion_intent:
-        lead_type = "excursion"
+    if contextual_type:
+        lead_type = contextual_type
     if is_nonstandard_driver_request(text):
         lead_type = "transfer"
     if lead_type == "unknown" or lead_type == "companions":
