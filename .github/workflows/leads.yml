@@ -97,7 +97,7 @@ jobs:
         run: python lead_bot.py
 
       - name: Telegram alert if bot failed
-        if: failure() && github.event_name != 'push' && github.event_name != 'push'
+        if: failure() && github.event_name == 'schedule' && github.event_name != 'push'
         continue-on-error: true
         env:
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
