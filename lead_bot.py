@@ -140,7 +140,7 @@ STATE_FILE = STATE_DIR / "state.json"
 
 MAX_AGE_HOURS = 72
 SEARCH_LIMIT = 35
-CHAT_SCAN_LIMIT = 300
+CHAT_SCAN_LIMIT = 700
 # Do not discard valid leads just because a run found many.
 MAX_LEADS_PER_RUN = None
 MIN_SCORE_TO_SEND = 28
@@ -159,7 +159,7 @@ SESSION_WARNING_INTERVAL_MINUTES = 360
 DISCOVERY_ENABLED = True
 DISCOVERY_LIMIT_PER_QUERY = 20
 MAX_DISCOVERED_CHATS = 60
-DISCOVERY_CHAT_SCAN_LIMIT = 140
+DISCOVERY_CHAT_SCAN_LIMIT = 400
 DISCOVERY_QUERY_DELAY_SECONDS = 0.35
 
 # СНГ / русскоязычные рынки: расширяем поиск за пределы локальных чатов Абхазии.
@@ -171,7 +171,7 @@ CIS_ENABLED = True
 # не читает личные переписки и не сканирует обычные нетуристические группы.
 MY_CHATS_ENABLED = True
 MY_CHATS_MAX_GROUPS = 80
-MY_CHATS_SCAN_LIMIT = 220
+MY_CHATS_SCAN_LIMIT = 700
 
 # Публичные внешние площадки/форумы. Проверяются реже Telegram,
 # чтобы не создавать лишнюю нагрузку на сайты. Используются только
@@ -3842,7 +3842,7 @@ async def chat_scan_worker(client, state, cutoff, self_user_id, stats):
             entity = await client.get_entity(chat_ref)
             cursor = get_chat_cursor(state, entity, "whitelist")
             newest_id = cursor
-            kwargs = {"limit": CHAT_SCAN_LIMIT}
+            kwargs = {"limit": None if cursor > 0 else CHAT_SCAN_LIMIT}
             if cursor > 0:
                 kwargs["min_id"] = cursor
 
@@ -3940,7 +3940,7 @@ async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats
         try:
             cursor = get_chat_cursor(state, entity, "discovered")
             newest_id = cursor
-            kwargs = {"limit": DISCOVERY_CHAT_SCAN_LIMIT}
+            kwargs = {"limit": None if cursor > 0 else DISCOVERY_CHAT_SCAN_LIMIT}
             if cursor > 0:
                 kwargs["min_id"] = cursor
 
@@ -4000,7 +4000,7 @@ async def joined_chat_scan_worker(client, state, cutoff, self_user_id, stats):
         try:
             cursor = get_chat_cursor(state, entity, "joined")
             newest_id = cursor
-            kwargs = {"limit": MY_CHATS_SCAN_LIMIT}
+            kwargs = {"limit": None if cursor > 0 else MY_CHATS_SCAN_LIMIT}
             if cursor > 0:
                 kwargs["min_id"] = cursor
 
