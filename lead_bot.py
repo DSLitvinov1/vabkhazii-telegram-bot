@@ -1462,7 +1462,7 @@ def has_execution_request(text):
     return False
 
 
-def is_chain_context_message(text, source_context=""):
+def is_chain_context_message(text, source_context="", trusted_source=False):
     """Сообщение само может быть не лидом, но содержать детали соседней заявки автора."""
     lower = normalize(text).lower()
     if looks_like_past_trip(text) or looks_like_advice_response(text):
@@ -1471,7 +1471,7 @@ def is_chain_context_message(text, source_context=""):
         return False
 
     has_geo_context = has_abkhazia_context(text) or has_abkhazia_source_context(source_context)
-    if not has_geo_context:
+    if not has_geo_context and not trusted_source:
         return False
 
     detail = any([
@@ -3558,7 +3558,11 @@ async def message_to_candidate(
         if reject_reason in {
             "no_direct_service_intent", "informational_only",
             "no_abkhazia_context", "unknown_service_type",
-        } and is_chain_context_message(text, context_hint):
+        } and is_chain_context_message(
+            text,
+            context_hint,
+            trusted_source=source_kind in {"joined", "whitelist", "discovered"},
+        ):
             return {
                 "id": unique_id,
                 "message_id": message.id,
