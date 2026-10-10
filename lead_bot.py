@@ -2184,6 +2184,19 @@ def infer_contextual_service_intent(text):
     ):
         return "excursion"
 
+    # Скрытый экскурсионный спрос без названия конкретного маршрута:
+    # «куда съездить завтра из Гагры, нас четверо».
+    generic_excursion_interest = any(
+        marker in lower
+        for marker in [
+            "куда поехать", "куда съездить", "куда можно поехать",
+            "куда можно съездить", "что посмотреть", "что посетить",
+            "посоветуйте маршрут", "подскажите маршрут",
+        ]
+    )
+    if generic_excursion_interest and places and trip_detail:
+        return "excursion"
+
     return None
 
 
