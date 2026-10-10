@@ -1169,27 +1169,52 @@ def contains_any(text, phrases):
 def looks_like_seller(text):
     lower = normalize(text).lower()
 
-    if contains_any(lower, SELLER_PHRASES):
-        return True
-
-    # Недвижимость и объявления продавцов услуг не должны попадать даже в planning.
+    # Жёсткие признаки предложения услуги/объявления всегда важнее.
     if any(phrase in lower for phrase in REAL_ESTATE_AD_PHRASES):
         return True
     if any(phrase in lower for phrase in SELLER_OFFER_PHRASES):
         return True
 
-    # «Кто желает завтра ... 4 места» — типичное предложение места/поездки,
-    # а не запрос покупателя.
+    explicit_offer_markers = [
+        "предлагаю", "предлагаем", "организую", "организуем",
+        "провожу", "проводим", "бронируйте", "записывайтесь",
+        "свободные места", "есть места", "набираю группу", "набираем группу",
+        "наш автопарк", "наши автомобили", "работаю гидом", "я гид",
+        "кому нужен трансфер", "кому нужна экскурсия",
+    ]
+    if any(marker in lower for marker in explicit_offer_markers):
+        return True
+
+    # «Кто желает завтра ... 4 места» — предложение поездки, не спрос.
     if re.search(r"\b\d{1,2}\s*мест(?:о|а)?\b", lower) and any(
         phrase in lower
         for phrase in ["кто желает", "выезжаю", "еду", "поеду", "минивэн", "минивен", "микроавтобус"]
     ):
         return True
 
-    # Водитель, который сам сообщает маршрут/время и что машина свободна.
     if any(vehicle in lower for vehicle in ["минивэн", "минивен", "микроавтобус"]) and any(
         phrase in lower for phrase in ["выезжаю", "еду пустой", "пустой", "свободен", "есть места"]
     ):
+        return True
+
+    # Вопрос покупателя не блокируем только из-за слов «цена/стоимость/пишите».
+    buyer_question = (
+        "?" in text
+        or any(
+            marker in lower
+            for marker in [
+                "подскаж", "сколько", "нужен", "нужна", "нужно", "надо",
+                "ищу", "ищем", "хочу", "хотим", "кто может", "кто отвез",
+                "кто довез", "кто забер", "кто встрет", "есть ли", "можно ли",
+            ]
+        )
+    )
+    buyer_service_context = any(marker in lower for marker in SERVICE_NOUNS) or bool(
+        detect_route(text)
+    ) or len(detect_all_places(text)) >= 2
+
+    seller_phrase_hit = contains_any(lower, SELLER_PHRASES)
+    if seller_phrase_hit and not (buyer_question and buyer_service_context):
         return True
 
     commercial_markers = [
@@ -1198,17 +1223,16 @@ def looks_like_seller(text):
         "места", "заказ", "менеджер",
     ]
     count = sum(1 for marker in commercial_markers if marker in lower)
-
-    # Несколько коммерческих маркеров + контакт обычно означают объявление продавца.
     has_contact = bool(
         re.search(r"(?:\+?7|8)[\s()\-]*\d{3}", lower)
         or "@" in text
         or "t.me/" in lower
     )
 
+    if buyer_question and buyer_service_context and count < 5:
+        return False
     if count >= 3 and has_contact:
         return True
-
     return count >= 5
 
 
