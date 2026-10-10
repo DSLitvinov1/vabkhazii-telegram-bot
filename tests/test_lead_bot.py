@@ -254,6 +254,71 @@ class LeadClassificationTests(unittest.TestCase):
             lead_bot.GLOBAL_QUERY_BATCH_SIZE,
         )
 
+    def test_terse_route_request_without_service_word_is_kept(self):
+        result, reason = self.classify(
+            "Сухум — Гагра завтра, 2 человека с чемоданами."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_terse_route_price_question_is_kept(self):
+        result, reason = self.classify(
+            "Сухум — Цандрипш, сколько будет стоить?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+
+    def test_terse_excursion_request_is_kept(self):
+        result, reason = self.classify(
+            "Рица завтра, нас двое. Подскажите варианты."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+
+    def test_generic_excursion_opportunity_with_city_and_date_is_kept(self):
+        result, reason = self.classify(
+            "Мы в Гагре. Куда съездить завтра с ребёнком?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_generic_planning_without_local_detail_stays_filtered(self):
+        result, reason = self.classify(
+            "Планируем поездку в Абхазию когда-нибудь осенью, что посмотреть?"
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
+    def test_service_discussion_group_is_not_blocked_only_by_taxi_word(self):
+        chat = SimpleNamespace(
+            title="Такси и поездки Абхазия — обсуждение",
+            username="abhazia_taxi_talk",
+            broadcast=False,
+            megagroup=True,
+        )
+        self.assertTrue(lead_bot.is_discovery_candidate_chat(chat))
+
+    def test_clear_commercial_storefront_group_remains_blocked(self):
+        chat = SimpleNamespace(
+            title="Служба такси Абхазия",
+            username="abhazia_taxi_service",
+            broadcast=False,
+            megagroup=True,
+        )
+        self.assertFalse(lead_bot.is_discovery_candidate_chat(chat))
+
+    def test_search_capacity_is_expanded(self):
+        self.assertGreaterEqual(lead_bot.SEARCH_LIMIT, 50)
+        self.assertGreaterEqual(lead_bot.MAX_DISCOVERED_CHATS, 100)
+        self.assertGreaterEqual(lead_bot.MY_CHATS_MAX_GROUPS, 100)
+        self.assertGreaterEqual(lead_bot.GLOBAL_QUERY_BATCH_SIZE, 50)
+
     def test_direct_excursion_request_is_kept(self):
         result, reason = self.classify(
             "Ищем индивидуальную экскурсию на Рицу завтра, нас 3 человека."
