@@ -226,6 +226,20 @@ class LeadClassificationTests(unittest.TestCase):
             )
         )
 
+    def test_more_abkhazia_localities_are_recognized_for_transfer_context(self):
+        samples = {
+            "Алахадзы": "Нужно завтра из Алахадзы в Сухум, нас двое.",
+            "Гулрыпш": "Подскажите такси из Сухума в Гулрыпш вечером?",
+            "Кындыг": "Сколько будет стоить машина из Сухума в Кындыг завтра?",
+        }
+        for place, text in samples.items():
+            with self.subTest(place=place):
+                result, reason = self.classify(text)
+                self.assertIsNone(reason)
+                self.assertIsNotNone(result)
+                self.assertEqual(result["lead_type"], "transfer")
+                self.assertIn(place, lead_bot.detect_all_places(text))
+
     def test_alt_tsandripsh_source_context_is_recognized(self):
         self.assertTrue(
             lead_bot.has_abkhazia_source_context("Цандрипш поездки")
