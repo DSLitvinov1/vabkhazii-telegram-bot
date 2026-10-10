@@ -313,6 +313,36 @@ class LeadClassificationTests(unittest.TestCase):
         )
         self.assertFalse(lead_bot.is_discovery_candidate_chat(chat))
 
+    def test_fast_priority_search_runs_more_often_than_full_search(self):
+        self.assertLessEqual(
+            lead_bot.FAST_PRIORITY_SEARCH_INTERVAL_MINUTES,
+            lead_bot.GLOBAL_SEARCH_INTERVAL_MINUTES,
+        )
+        self.assertGreaterEqual(len(lead_bot.FAST_PRIORITY_SEARCH_QUERIES), 12)
+        for query in lead_bot.FAST_PRIORITY_SEARCH_QUERIES:
+            self.assertIn(query, lead_bot.PRIORITY_SEARCH_QUERIES)
+
+    def test_natural_transfer_verbs_are_understood(self):
+        samples = [
+            "Кто может подвезти из Сухума в Гагру завтра? Нас двое.",
+            "Надо подбросить 2 человек из Гагры в Сухум вечером.",
+            "Можно подобрать нас в Пицунде и довезти до Сухума?",
+        ]
+        for text in samples:
+            with self.subTest(text=text):
+                result, reason = self.classify(text)
+                self.assertIsNone(reason)
+                self.assertIsNotNone(result)
+                self.assertEqual(result["lead_type"], "transfer")
+
+    def test_latin_place_spellings_are_recognized(self):
+        result, reason = self.classify(
+            "Need taxi Sukhum to Gagra tomorrow, 2 people"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+
     def test_search_capacity_is_expanded(self):
         self.assertGreaterEqual(lead_bot.SEARCH_LIMIT, 50)
         self.assertGreaterEqual(lead_bot.MAX_DISCOVERED_CHATS, 100)
