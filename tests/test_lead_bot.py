@@ -170,6 +170,13 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(reason, "seller_or_ad")
 
+    def test_distance_question_is_not_mistaken_for_transfer_price(self):
+        result, reason = self.classify(
+            "Подскажите, сколько километров от Сухума до Гагры?"
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
     def test_plain_transport_statement_is_not_a_lead(self):
         result, reason = self.classify(
             "Маршрутки из Сухума в Гагру ходят весь день."
