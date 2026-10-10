@@ -3520,6 +3520,12 @@ def new_filter_stats():
         "warm_leads": 0,
         "merged_chains": 0,
         "merged_messages": 0,
+        "global_full_runs": 0,
+        "global_fast_runs": 0,
+        "global_queries": 0,
+        "global_context_enriched": 0,
+        "joined_bootstrap_deferred": 0,
+        "discovered_bootstrap_deferred": 0,
         "external_pages_ok": 0,
         "external_search_index_ok": 0,
         "external_baseline": 0,
@@ -3569,6 +3575,12 @@ def print_filter_stats(stats):
     print(f"Informational only:            {stats['informational_only']}")
     print(f"Merged author chains:          {stats['merged_chains']}")
     print(f"Messages in merged chains:     {stats['merged_messages']}")
+    print(f"Global full searches:          {stats.get('global_full_runs', 0)}")
+    print(f"Global fast searches:          {stats.get('global_fast_runs', 0)}")
+    print(f"Global queries executed:       {stats.get('global_queries', 0)}")
+    print(f"Global context recovered:      {stats.get('global_context_enriched', 0)}")
+    print(f"Joined backfills deferred:     {stats.get('joined_bootstrap_deferred', 0)}")
+    print(f"Discovery backfills deferred:  {stats.get('discovered_bootstrap_deferred', 0)}")
     print(f"Planning candidates:           {stats['planning_candidate']}")
     print(f"Planning noise filtered:       {stats['planning_noise_filtered']}")
     print(f"No direct service intent:      {stats['no_direct_service_intent']}")
@@ -4038,16 +4050,19 @@ async def global_search_worker(client, state, cutoff, self_user_id, stats):
             state["global_query_offset"] = (offset + len(rotated)) % len(long_tail)
 
         selected_queries = list(dict.fromkeys(PRIORITY_SEARCH_QUERIES + rotated))
+        bump_stat(stats, "global_full_runs")
         print(
             f"[GLOBAL] full search: {len(selected_queries)} queries "
             f"({len(PRIORITY_SEARCH_QUERIES)} priority + {len(rotated)} rotating)"
         )
     else:
         selected_queries = list(dict.fromkeys(FAST_PRIORITY_SEARCH_QUERIES))
+        bump_stat(stats, "global_fast_runs")
         print(f"[GLOBAL] fast search: {len(selected_queries)} high-intent queries")
 
     try:
         for query in selected_queries:
+            bump_stat(stats, "global_queries")
             print(f"[GLOBAL] {query}")
             try:
                 async for message in client.iter_messages(None, search=query, limit=SEARCH_LIMIT):
