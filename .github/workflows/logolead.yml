@@ -16,6 +16,14 @@ on:
         description: "Send found leads during this manual run"
         required: false
         default: "0"
+      min_score:
+        description: "Minimum lead score"
+        required: false
+        default: "50"
+
+permissions:
+  contents: read
+  statuses: write
 
 jobs:
   leads:
@@ -60,6 +68,7 @@ jobs:
           python test_market.py
           python test_notify.py
           python test_feedback.py
+          python test_pipeline.py
           python test_config.py
           python test_chat_filter.py
           python test_pending.py
@@ -79,16 +88,18 @@ jobs:
           LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
-          MIN_SCORE: "50"
+          MIN_SCORE: ${{ inputs.min_score || '50' }}
           MAX_AGE_HOURS: "72"
+          GLOBAL_ROTATING_QUERIES_PER_RUN: "12"
           MAX_LEADS_PER_RUN: "1"
           DELIVERY_MAX_AGE_HOURS: "24"
           PENDING_LIMIT: "500"
-          DELIVERY_ENABLED: ${{ inputs.deliver || '0' }}
+          DELIVERY_ENABLED: ${{ github.event_name == 'schedule' && '1' || (inputs.deliver || '0') }}
           ENABLE_FEEDBACK: "0"
           RUN_INTERVAL_MINUTES: "10"
           FORCE_RUN: ${{ inputs.force_logolead || '0' }}
           DISCOVERY_INTERVAL_MINUTES: "360"
+          DISCOVERY_ROTATING_QUERIES_PER_REFRESH: "18"
           MAX_DISCOVERED_GROUPS: "30"
           GROUP_CACHE_LIMIT: "120"
           GROUP_SCAN_LIMIT: "80"
@@ -99,6 +110,8 @@ jobs:
           DEEP_GROUP_SCAN_COUNT: "6"
           DEEP_GROUP_SEARCH_LIMIT: "15"
           ENABLE_MARKETS: "1"
+          ENABLE_KWORK: "1"
+          ENABLE_PROFI: "1"
           MARKET_INTERVAL_MINUTES: "30"
           ENABLE_WEB: "1"
           WEB_INTERVAL_MINUTES: "60"
@@ -108,3 +121,31 @@ jobs:
           BOT_RETRY_MAX_SECONDS: "30"
           DISPLAY_TZ_OFFSET: "3"
         run: python lead_bot.py
+
+      - name: Publish LogoLead status
+        if: always()
+        env:
+          CI_STATE: ${{ job.status }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          state='success' if os.environ.get('CI_STATE')=='success' else 'failure'
+          payload=json.dumps({
+              'state':state,
+              'context':'logolead/tests',
+              'description':'LogoLead workflow '+state,
+          }).encode()
+          req=urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/statuses/{os.environ['GITHUB_SHA']}",
+              data=payload,
+              headers={
+                  'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                  'Accept':'application/vnd.github+json',
+                  'Content-Type':'application/json',
+              },
+              method='POST',
+          )
+          with urllib.request.urlopen(req,timeout=20) as response:
+              print('STATUS_HTTP',response.status)
+          PY
