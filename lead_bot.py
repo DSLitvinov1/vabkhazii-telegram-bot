@@ -141,7 +141,8 @@ STATE_FILE = STATE_DIR / "state.json"
 MAX_AGE_HOURS = 72
 SEARCH_LIMIT = 35
 CHAT_SCAN_LIMIT = 300
-MAX_LEADS_PER_RUN = 20
+# Do not discard valid leads just because a run found many.
+MAX_LEADS_PER_RUN = None
 MIN_SCORE_TO_SEND = 28
 QUERY_DELAY_SECONDS = 0.20
 CHAIN_WINDOW_HOURS = 6
@@ -3788,7 +3789,7 @@ async def global_search_worker(client, state, cutoff, self_user_id, stats):
             await asyncio.sleep(QUERY_DELAY_SECONDS)
     finally:
         # Даже если отдельный запрос дал ошибку, не долбим Telegram полным
-        # поиском каждые 5 минут. Обычные целевые/вступленные чаты всё равно
+        # поиском на каждом 15-минутном запуске. Обычные целевые/вступленные чаты всё равно
         # продолжают проверяться на каждом запуске.
         mark_state_time(state, "global_last_scan")
 
