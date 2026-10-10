@@ -179,7 +179,7 @@ MY_CHATS_SCAN_LIMIT = 700
 EXTERNAL_WEB_ENABLED = True
 EXTERNAL_SCAN_INTERVAL_MINUTES = 30
 EXTERNAL_SEARCH_ENGINE_VERSION = "dual_search_v2"
-EXTERNAL_MAX_ITEMS_PER_SOURCE = 40
+EXTERNAL_MAX_ITEMS_PER_SOURCE = 60
 EXTERNAL_HTTP_TIMEOUT_SECONDS = 20
 
 # Первый запуск каждого источника создаёт базовую точку и не шлёт старые темы.
@@ -200,6 +200,8 @@ EXTERNAL_SOURCES = [
             'site:travelask.ru inurl:questions Абхазия экскурсия since:month',
             'site:travelask.ru inurl:questions Абхазия трансфер since:month',
             'site:travelask.ru inurl:questions Абхазия как добраться since:month',
+            'site:travelask.ru inurl:questions Абхазия такси цена since:month',
+            'site:travelask.ru inurl:questions Абхазия куда съездить since:month',
             'site:travelask.ru inurl:questions Гагра Пицунда Сухум Новый Афон Рица since:month',
         ],
     },
@@ -259,6 +261,9 @@ EXTERNAL_SOURCES = [
             'site:vk.com/wall Абхазия "нужен гид"',
             'site:vk.com/wall Абхазия "нужен трансфер"',
             'site:vk.com/wall Абхазия "как добраться"',
+            'site:vk.com/wall Абхазия "сколько будет стоить"',
+            'site:vk.com/wall Абхазия "нужна машина"',
+            'site:vk.com/wall Абхазия "куда съездить"',
             'site:vk.com/wall Абхазия "подскажите такси"',
             'site:vk.com/wall Сухум Гагра такси',
             'site:vk.com/topic Абхазия "посоветуйте экскурсию"',
@@ -290,6 +295,11 @@ EXTERNAL_SOURCES = [
             'site:t.me Абхазия "нужен трансфер"',
             'site:t.me Абхазия "подскажите такси"',
             'site:t.me Абхазия "как добраться"',
+            'site:t.me Абхазия "сколько будет стоить"',
+            'site:t.me Абхазия "нужна машина"',
+            'site:t.me Абхазия "кто заберет"',
+            'site:t.me Абхазия "куда съездить"',
+            'site:t.me Сухум Гагра "сколько"',
             'site:t.me Сухум Гагра такси',
             'site:t.me Сухум Цандрипш такси',
             'site:t.me Абхазия "ищем трансфер"',
