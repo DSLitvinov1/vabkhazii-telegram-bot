@@ -172,6 +172,8 @@ CIS_ENABLED = True
 MY_CHATS_ENABLED = True
 MY_CHATS_MAX_GROUPS = 140
 MY_CHATS_SCAN_LIMIT = 700
+MY_CHATS_BOOTSTRAP_PER_RUN = 12
+DISCOVERY_BOOTSTRAP_PER_RUN = 15
 
 # Публичные внешние площадки/форумы. Проверяются реже Telegram,
 # чтобы не создавать лишнюю нагрузку на сайты. Используются только
@@ -4143,6 +4145,7 @@ async def get_discovered_chats_for_scan(client, state):
 async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats):
     candidates = {}
     chats = await get_discovered_chats_for_scan(client, state)
+    bootstrapped = 0
 
     for entity in chats:
         username = getattr(entity, "username", None) or "unknown"
@@ -4151,6 +4154,12 @@ async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats
 
         try:
             cursor = get_chat_cursor(state, entity, "discovered")
+            if cursor == 0:
+                if bootstrapped >= DISCOVERY_BOOTSTRAP_PER_RUN:
+                    bump_stat(stats, "discovered_bootstrap_deferred")
+                    continue
+                bootstrapped += 1
+
             newest_id = cursor
             kwargs = {"limit": None if cursor > 0 else DISCOVERY_CHAT_SCAN_LIMIT}
             if cursor > 0:
@@ -4199,6 +4208,7 @@ async def joined_chat_scan_worker(client, state, cutoff, self_user_id, stats):
     """
     candidates = {}
     chats = await list_joined_tourist_chats(client)
+    bootstrapped = 0
 
     for entity in chats:
         title = getattr(entity, "title", None) or "Telegram group"
@@ -4211,6 +4221,12 @@ async def joined_chat_scan_worker(client, state, cutoff, self_user_id, stats):
 
         try:
             cursor = get_chat_cursor(state, entity, "joined")
+            if cursor == 0:
+                if bootstrapped >= MY_CHATS_BOOTSTRAP_PER_RUN:
+                    bump_stat(stats, "joined_bootstrap_deferred")
+                    continue
+                bootstrapped += 1
+
             newest_id = cursor
             kwargs = {"limit": None if cursor > 0 else MY_CHATS_SCAN_LIMIT}
             if cursor > 0:
