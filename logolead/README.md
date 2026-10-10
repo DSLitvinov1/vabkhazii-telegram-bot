@@ -1,59 +1,27 @@
 # LogoLead
 
-LogoLead is a public-source lead finder for a speech therapist.
+Standalone private repository for LogoLead — a lead finder for a speech therapist.
 
-## Production pipeline
-1. Search public Telegram messages for explicit and implicit demand for a speech therapist, defectologist or related help.
-2. Use matching public chats as high-priority source seeds.
-3. Discover and cache public parent, child-development and city parent groups.
-4. Rotate through the group pool and scan only messages newer than the last processed message.
-5. Backfill very active groups in small chunks so older fresh requests are not missed.
-6. Run periodic keyword search inside rotating groups.
-7. Reject specialist advertising, jobs, bots, expert-content posts and other non-client requests.
-8. Score buyer intent from 0 to 100 and extract child age, city, online/offline format and likely speech problem.
-9. Deduplicate cross-posts, preserve delivered history and maintain a persistent pending queue.
-10. Generate a short personalized reply draft and send a compact Telegram card with source/contact buttons.
+LogoLead searches public Telegram messages, public parent groups, selected public web sources and public marketplace projects for people actively looking for a speech therapist/defectologist or describing a speech problem that may require one.
 
-## Runtime
-LogoLead has its own GitHub Actions workflow: `.github/workflows/logolead.yml`. The legacy VAbkhazii lead bot stays in a separate workflow, so neither blocks the other.
+The system filters specialist advertising, vacancies, bots, expert/media requests and duplicate cross-posts, scores buyer intent from 0 to 100, keeps only fresh leads, and prepares a compact Telegram card with a personalized reply draft plus source/contact buttons.
 
-- production schedule is temporarily paused while the Telegram user session is renewed;
-- push: run the test suite only, never deliver leads;
-- manual dispatch: run tests and allow a forced scan after the Telegram session is valid again;
-- once the session is renewed, the intended schedule is a GitHub trigger every 5 minutes with an effective LogoLead scan interval of about 10 minutes;
-- lead search window: 72 hours;
-- delivery window: only leads newer than 24 hours;
-- production threshold: 50/100;
-- canary delivery: at most 1 card per run while accuracy is being validated;
-- pending queue: up to 500 candidates;
-- group cache: up to 120 public groups;
-- group discovery refresh: about every 6 hours;
-- deep Telegram search: about every 3 hours.
+## Production safeguards
 
-Scheduled runs skip the full regression suite to reduce latency and GitHub Actions usage. Every code push runs the complete tests before production code is manually/scheduled.
+- public/searchable sources only;
+- no private-group auto-join;
+- no credential or anti-bot bypass;
+- no automatic unsolicited messaging to leads;
+- delivered-history and pending queues are separate;
+- stale backlog is not delivered;
+- high-intent global-search phrases run every scan while the larger query set rotates to reduce Telegram FloodWait risk;
+- public-group discovery queries rotate too, expanding city coverage without hammering Telegram search;
+- equally strong leads are freshness-ranked so recent requests are processed before older ones;
+- public marketplace collection includes Kwork plus a no-login Profi.ru adapter that only reads public order pages;
+- canary mode currently limits delivery to one fresh lead per run;
+- optional recipient feedback buttons (`👍 Подходит` / `👎 Не лид`) are implemented but disabled until a dedicated LogoLead bot token is used;
+- Telegram user-session workflows are serialized to avoid simultaneous use from different runner IPs.
 
-## Delivery target
-The destination is stored in the repository secret `LOGOLEAD_CHAT_ID`; it is independent from the old travel-leads chat. `LOGOLEAD_BOT_TOKEN` is supported for a dedicated future LogoLead bot. Until that secret exists, the authorized legacy delivery bot token is used.
+## Deployment state
 
-A separate manual workflow, `check-logolead-target.yml`, verifies that a Telegram user is reachable by the delivery bot without publishing numeric IDs in source code.
-
-## Lead cards
-Cards include:
-- lead score and heat level;
-- source and public Telegram author username when available;
-- child age, location and requested format when detected;
-- likely speech issue;
-- reason for the score;
-- publication freshness;
-- original excerpt;
-- a ready-to-send response draft;
-- button to open the source;
-- button to open the public author profile when a username is available.
-
-## Quality controls
-The repository has unit/integration tests plus a curated positive/negative lead quality gate. Provider accounts, bot-authored posts, vacancies, courses/webinars, promotional posts and media/expert requests are filtered before delivery.
-
-## Public marketplaces and web sources
-Kwork public projects are checked without login. Public Woman.ru threads can also be evaluated. Babyblog and U-mama adapters remain local-only because GitHub-hosted runners are rejected by those sites; LogoLead does not bypass their protections.
-
-Only public/searchable sources are scanned. No private-group auto-join, credential bypass, anti-bot bypass or automated unsolicited messaging.
+This repository is now the canonical standalone LogoLead codebase. Automatic schedule remains intentionally disabled until the renewed Telegram session and required repository secrets are migrated and validated here. Pushes run tests only; manual workflow dispatch is available after credentials are configured.
