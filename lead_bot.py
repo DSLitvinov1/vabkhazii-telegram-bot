@@ -1680,9 +1680,9 @@ def is_joined_tourist_chat(chat):
 
     combined = f"{title} {username}".lower()
 
-    # Коммерческие витрины и явно нерелевантные сообщества не сканируем.
-    if any(marker in combined for marker in COMMERCIAL_CHAT_MARKERS):
-        return False
+    # Явно нерелевантные сообщества не сканируем.
+    # Чаты про трансферы/такси/экскурсии не блокируем целиком: в них бывают
+    # реальные вопросы покупателей. Рекламу отсечёт фильтр сообщения/автора.
     if any(marker in combined for marker in IRRELEVANT_CHAT_MARKERS):
         return False
 
