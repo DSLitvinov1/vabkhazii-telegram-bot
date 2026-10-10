@@ -150,6 +150,7 @@ CHAIN_WINDOW_HOURS = 6
 # Автоматический режим 24/7 через GitHub Actions.
 # Workflow запускается каждые 15 минут, а тяжёлый глобальный поиск выполняется реже.
 GLOBAL_SEARCH_INTERVAL_MINUTES = 30
+FAST_PRIORITY_SEARCH_INTERVAL_MINUTES = 15
 DISCOVERED_SCAN_INTERVAL_MINUTES = 15
 DISCOVERY_REFRESH_INTERVAL_MINUTES = 180
 SESSION_WARNING_INTERVAL_MINUTES = 360
@@ -672,6 +673,28 @@ PRIORITY_SEARCH_QUERIES = [
 
 GLOBAL_QUERY_BATCH_SIZE = 54
 
+FAST_PRIORITY_SEARCH_QUERIES = [
+    "подскажите такси",
+    "такси Сухум",
+    "такси Гагра",
+    "нужна машина Абхазия",
+    "кто заберет Абхазия",
+    "кто отвезет Абхазия",
+    "кто довезет Абхазия",
+    "кто встретит Абхазия",
+    "нужен трансфер Абхазия",
+    "ищу трансфер Абхазия",
+    "Сухум Гагра",
+    "Сухум Цандрипш",
+    "Сухум Сочи",
+    "Гагра Сочи",
+    "нужна экскурсия Абхазия",
+    "ищу экскурсию Абхазия",
+    "кто возит Рица",
+    "куда съездить из Гагры завтра",
+]
+
+
 
 # =========================================================
 # SIGNALS
@@ -1079,6 +1102,7 @@ def load_state():
     # повторно перебирает сотни старых сообщений.
     state.setdefault("chat_cursors", {})
     state.setdefault("global_last_scan", None)
+    state.setdefault("global_fast_last_scan", None)
     state.setdefault("global_query_offset", 0)
     state.setdefault("discovered_last_scan", None)
     state.setdefault("discovery_refresh_last_scan", None)
@@ -3986,35 +4010,42 @@ def aggregate_telegram_candidates(items, stats):
 async def global_search_worker(client, state, cutoff, self_user_id, stats):
     candidates = {}
 
-    if not state_interval_due(
+    full_due = state_interval_due(
         state.get("global_last_scan"),
         GLOBAL_SEARCH_INTERVAL_MINUTES,
-    ):
-        print(
-            f"[GLOBAL] skipped: full Telegram search runs every "
-            f"{GLOBAL_SEARCH_INTERVAL_MINUTES} minutes"
-        )
+    )
+    fast_due = state_interval_due(
+        state.get("global_fast_last_scan"),
+        FAST_PRIORITY_SEARCH_INTERVAL_MINUTES,
+    )
+
+    if not full_due and not fast_due:
+        print("[GLOBAL] skipped: neither full nor fast search is due")
         return candidates
 
-    long_tail = [
-        query
-        for query in SEARCH_QUERIES
-        if query not in PRIORITY_SEARCH_QUERIES
-    ]
-    offset = int(state.get("global_query_offset", 0) or 0)
-    remaining = max(0, GLOBAL_QUERY_BATCH_SIZE - len(PRIORITY_SEARCH_QUERIES))
+    if full_due:
+        long_tail = [
+            query
+            for query in SEARCH_QUERIES
+            if query not in PRIORITY_SEARCH_QUERIES
+        ]
+        offset = int(state.get("global_query_offset", 0) or 0)
+        remaining = max(0, GLOBAL_QUERY_BATCH_SIZE - len(PRIORITY_SEARCH_QUERIES))
 
-    rotated = []
-    if long_tail and remaining:
-        for index in range(min(remaining, len(long_tail))):
-            rotated.append(long_tail[(offset + index) % len(long_tail)])
-        state["global_query_offset"] = (offset + len(rotated)) % len(long_tail)
+        rotated = []
+        if long_tail and remaining:
+            for index in range(min(remaining, len(long_tail))):
+                rotated.append(long_tail[(offset + index) % len(long_tail)])
+            state["global_query_offset"] = (offset + len(rotated)) % len(long_tail)
 
-    selected_queries = list(dict.fromkeys(PRIORITY_SEARCH_QUERIES + rotated))
-    print(
-        f"[GLOBAL] selected {len(selected_queries)} queries "
-        f"({len(PRIORITY_SEARCH_QUERIES)} priority + {len(rotated)} rotating)"
-    )
+        selected_queries = list(dict.fromkeys(PRIORITY_SEARCH_QUERIES + rotated))
+        print(
+            f"[GLOBAL] full search: {len(selected_queries)} queries "
+            f"({len(PRIORITY_SEARCH_QUERIES)} priority + {len(rotated)} rotating)"
+        )
+    else:
+        selected_queries = list(dict.fromkeys(FAST_PRIORITY_SEARCH_QUERIES))
+        print(f"[GLOBAL] fast search: {len(selected_queries)} high-intent queries")
 
     try:
         for query in selected_queries:
@@ -4044,10 +4075,11 @@ async def global_search_worker(client, state, cutoff, self_user_id, stats):
 
             await asyncio.sleep(QUERY_DELAY_SECONDS)
     finally:
-        # Даже если отдельный запрос дал ошибку, не долбим Telegram полным
-        # поиском на каждом 15-минутном запуске. Обычные целевые/вступленные чаты всё равно
-        # продолжают проверяться на каждом запуске.
-        mark_state_time(state, "global_last_scan")
+        if full_due:
+            mark_state_time(state, "global_last_scan")
+            mark_state_time(state, "global_fast_last_scan")
+        elif fast_due:
+            mark_state_time(state, "global_fast_last_scan")
 
     return candidates
 
