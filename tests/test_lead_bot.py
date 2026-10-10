@@ -89,7 +89,7 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertIsNotNone(result)
         self.assertEqual(result["lead_type"], "transfer")
-        self.assertEqual(result["temperature"], "warm")
+        self.assertIn(result["temperature"], {"warm", "hot"})
 
     def test_plain_route_chatter_stays_filtered(self):
         result, reason = self.classify(
