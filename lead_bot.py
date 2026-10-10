@@ -3582,6 +3582,66 @@ def print_filter_stats(stats):
     print("")
 
 
+async def enrich_sparse_global_context(client, chat, message, sender, text):
+    """Recover nearby messages by the same author when global search returns one fragment."""
+    sender_id = getattr(sender, "id", None)
+    message_id = int(getattr(message, "id", 0) or 0)
+    anchor_date = getattr(message, "date", None)
+    if sender_id is None or message_id <= 0 or anchor_date is None:
+        return text
+
+    if anchor_date.tzinfo is None:
+        anchor_date = anchor_date.replace(tzinfo=timezone.utc)
+
+    pieces = [(anchor_date, message_id, normalize(text))]
+    try:
+        async for nearby in client.iter_messages(
+            chat,
+            min_id=max(0, message_id - 24),
+            max_id=message_id + 24,
+            limit=30,
+        ):
+            nearby_id = int(getattr(nearby, "id", 0) or 0)
+            if nearby_id == message_id:
+                continue
+            if getattr(nearby, "sender_id", None) != sender_id:
+                continue
+            if getattr(nearby, "post", False) or getattr(nearby, "fwd_from", None):
+                continue
+
+            nearby_text = normalize(getattr(nearby, "message", ""))
+            nearby_date = getattr(nearby, "date", None)
+            if not nearby_text or nearby_date is None:
+                continue
+            if nearby_date.tzinfo is None:
+                nearby_date = nearby_date.replace(tzinfo=timezone.utc)
+
+            if abs((nearby_date - anchor_date).total_seconds()) > 2 * 3600:
+                continue
+
+            pieces.append((nearby_date, nearby_id, nearby_text))
+    except Exception as exc:
+        print(f"[GLOBAL CONTEXT WARNING] {type(exc).__name__}: {exc}")
+        return text
+
+    pieces.sort(key=lambda item: (item[0], item[1]))
+    unique = []
+    seen = set()
+    for _, _, value in pieces:
+        if value and value not in seen:
+            unique.append(value)
+            seen.add(value)
+
+    # Keep the local conversation compact; enough to recover route, people,
+    # time and price without merging a whole day of unrelated chat.
+    if len(unique) > 5:
+        anchor_index = unique.index(normalize(text)) if normalize(text) in unique else len(unique) // 2
+        left = max(0, anchor_index - 2)
+        unique = unique[left:left + 5]
+
+    return "\n".join(unique)
+
+
 async def message_to_candidate(
     client,
     message,
@@ -3691,6 +3751,40 @@ async def message_to_candidate(
         return None
 
     classification, reject_reason = classify_lead_detailed(text, source_context=context_hint)
+
+    # Global Telegram search can return just one phrase from a multi-message
+    # conversation. Recover nearby messages by the SAME author only when the
+    # fragment already looks commercially relevant.
+    if (
+        source_kind == "global"
+        and (
+            not classification
+            or classification.get("temperature") == "warm"
+        )
+        and (
+            has_buyer_intent(text)
+            or any(marker in text.lower() for marker in SERVICE_NOUNS)
+            or any(marker in text.lower() for marker in [
+                "сколько", "цена", "стоимость", "забрать", "привезти",
+                "отвезти", "довезти", "куда поехать", "куда съездить",
+            ])
+        )
+    ):
+        enriched_text = await enrich_sparse_global_context(
+            client, chat, message, sender, text
+        )
+        if enriched_text != text:
+            enriched_classification, enriched_reason = classify_lead_detailed(
+                enriched_text,
+                source_context=context_hint,
+            )
+            if enriched_classification:
+                text = enriched_text
+                classification = enriched_classification
+                reject_reason = None
+                bump_stat(stats, "global_context_enriched")
+            elif not classification:
+                reject_reason = enriched_reason
 
     # Слабое соседнее сообщение сохраняем только как контекст будущей цепочки
     # того же автора: например «нас 5, нужен минивэн» или «будем завтра».
