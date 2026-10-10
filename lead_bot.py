@@ -2265,7 +2265,26 @@ def infer_contextual_service_intent(text):
             "цена", "стоимость", "почем", "почём",
         ]
     )
-    terse_route_price = len(places) >= 2 and "сколько" in lower
+    measurement_question = any(
+        marker in lower
+        for marker in [
+            "сколько километров", "сколько км", "какое расстояние",
+            "расстояние между", "сколько по времени ехать",
+            "сколько ехать", "сколько часов ехать",
+        ]
+    )
+    terse_route_price = (
+        len(places) >= 2
+        and not measurement_question
+        and any(
+            marker in lower
+            for marker in [
+                "сколько будет стоить", "сколько стоит",
+                "сколько выйдет", "во сколько обойдется", "во сколько обойдётся",
+                "цена", "стоимость", "почем", "почём",
+            ]
+        )
+    )
 
     # Chat-style requests often omit verbs entirely:
     # «Сухум — Гагра завтра, 2 человека».
