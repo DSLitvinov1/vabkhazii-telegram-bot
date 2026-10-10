@@ -3627,8 +3627,28 @@ async def global_search_worker(client, state, cutoff, self_user_id, stats):
         )
         return candidates
 
+    long_tail = [
+        query
+        for query in SEARCH_QUERIES
+        if query not in PRIORITY_SEARCH_QUERIES
+    ]
+    offset = int(state.get("global_query_offset", 0) or 0)
+    remaining = max(0, GLOBAL_QUERY_BATCH_SIZE - len(PRIORITY_SEARCH_QUERIES))
+
+    rotated = []
+    if long_tail and remaining:
+        for index in range(min(remaining, len(long_tail))):
+            rotated.append(long_tail[(offset + index) % len(long_tail)])
+        state["global_query_offset"] = (offset + len(rotated)) % len(long_tail)
+
+    selected_queries = list(dict.fromkeys(PRIORITY_SEARCH_QUERIES + rotated))
+    print(
+        f"[GLOBAL] selected {len(selected_queries)} queries "
+        f"({len(PRIORITY_SEARCH_QUERIES)} priority + {len(rotated)} rotating)"
+    )
+
     try:
-        for query in SEARCH_QUERIES:
+        for query in selected_queries:
             print(f"[GLOBAL] {query}")
             try:
                 async for message in client.iter_messages(None, search=query, limit=SEARCH_LIMIT):
