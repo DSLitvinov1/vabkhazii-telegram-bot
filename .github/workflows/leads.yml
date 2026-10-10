@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: vabkhazii-leads-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   leads:
@@ -86,6 +86,7 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Run VAbkhazii Leads Bot
+        if: github.event_name != 'push'
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
@@ -96,7 +97,7 @@ jobs:
         run: python lead_bot.py
 
       - name: Telegram alert if bot failed
-        if: failure()
+        if: failure() && github.event_name != 'push'
         continue-on-error: true
         env:
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
