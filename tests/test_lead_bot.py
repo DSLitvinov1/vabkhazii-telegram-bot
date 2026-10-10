@@ -337,7 +337,7 @@ class LeadClassificationTests(unittest.TestCase):
 
     def test_latin_place_spellings_are_recognized(self):
         result, reason = self.classify(
-            "Need taxi Sukhum to Gagra tomorrow, 2 people"
+            "Такси Sukhum — Gagra завтра, 2 человека"
         )
         self.assertIsNone(reason)
         self.assertIsNotNone(result)
