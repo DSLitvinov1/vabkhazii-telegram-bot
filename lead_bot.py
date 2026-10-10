@@ -1463,7 +1463,12 @@ def is_chain_context_message(text, source_context=""):
         bool(detect_all_places(text)),
         bool(detect_route(text)),
         any(marker in lower for marker in SERVICE_NOUNS),
+        any(marker in lower for marker in SERVICE_REQUEST_WORDS),
         any(marker in lower for marker in PLANNING_INTENT_PHRASES),
+        any(marker in lower for marker in [
+            "сколько", "цена", "стоимость", "забрать", "привезти",
+            "отвезти", "довезти", "такси", "машина",
+        ]),
         has_future_trip_signal(text),
     ])
     return detail
@@ -1613,7 +1618,8 @@ def is_discovery_candidate_chat(chat):
 
     abkhazia_markers = [
         "абхаз", "гагр", "пицунд", "сухум", "афон", "гудаут",
-        "цандрыпш", "псоу", "рица",
+        "цандрыпш", "цандрипш", "псоу", "рица", "мзы", "очамч", "ткуарч",
+        "amra", "амра",
     ]
     if any(marker in combined for marker in abkhazia_markers):
         return True
