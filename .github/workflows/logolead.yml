@@ -12,6 +12,10 @@ on:
         description: "Force LogoLead scan now"
         required: false
         default: "0"
+      deliver:
+        description: "Send found leads during this manual run"
+        required: false
+        default: "0"
 
 jobs:
   leads:
@@ -80,7 +84,7 @@ jobs:
           MAX_LEADS_PER_RUN: "1"
           DELIVERY_MAX_AGE_HOURS: "24"
           PENDING_LIMIT: "500"
-          DELIVERY_ENABLED: "1"
+          DELIVERY_ENABLED: ${{ inputs.deliver || '0' }}
           ENABLE_FEEDBACK: "0"
           RUN_INTERVAL_MINUTES: "10"
           FORCE_RUN: ${{ inputs.force_logolead || '0' }}

@@ -18,7 +18,8 @@ assert "if: github.event_name != 'push'" in logo
 assert "FORCE_RUN: ${{ inputs.force_logolead || '0' }}" in logo
 assert 'ENABLE_WEB: "1"' in logo
 assert 'ENABLE_MARKETS: "1"' in logo
-assert 'DELIVERY_ENABLED: "1"' in logo
+assert "DELIVERY_ENABLED: ${{ inputs.deliver || '0' }}" in logo
+assert 'deliver:' in logo
 assert 'MAX_LEADS_PER_RUN: "1"' in logo
 assert 'DELIVERY_MAX_AGE_HOURS: "24"' in logo
 assert 'PENDING_LIMIT: "500"' in logo
