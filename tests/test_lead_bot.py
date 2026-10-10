@@ -193,6 +193,13 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIsNotNone(reason)
 
+    def test_travel_time_question_is_not_mistaken_for_transfer_lead(self):
+        result, reason = self.classify(
+            "Подскажите, сколько ехать от Сухума до Гагры?"
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
     def test_plain_transport_statement_is_not_a_lead(self):
         result, reason = self.classify(
             "Маршрутки из Сухума в Гагру ходят весь день."
