@@ -1654,9 +1654,6 @@ def is_discovery_candidate_chat(chat):
     title = (getattr(chat, "title", None) or "").lower()
     combined = f"{title} {username}"
 
-    if has_abkhazia_context(combined):
-        return True
-
     if username in {name.lower() for name in TARGET_CHATS}:
         return False
 
@@ -1664,6 +1661,9 @@ def is_discovery_candidate_chat(chat):
         return False
     if any(marker in combined for marker in IRRELEVANT_CHAT_MARKERS):
         return False
+
+    if has_abkhazia_context(combined):
+        return True
 
     abkhazia_markers = [
         "абхаз", "гагр", "пицунд", "сухум", "афон", "гудаут",
@@ -1708,14 +1708,14 @@ def is_joined_tourist_chat(chat):
 
     combined = f"{title} {username}".lower()
 
-    if has_abkhazia_context(combined):
-        return True
-
     # Явно нерелевантные сообщества не сканируем.
     # Чаты про трансферы/такси/экскурсии не блокируем целиком: в них бывают
     # реальные вопросы покупателей. Рекламу отсечёт фильтр сообщения/автора.
     if any(marker in combined for marker in IRRELEVANT_CHAT_MARKERS):
         return False
+
+    if has_abkhazia_context(combined):
+        return True
 
     abkhazia_markers = [
         "абхаз", "гагр", "пицунд", "сухум", "афон", "гудаут",
