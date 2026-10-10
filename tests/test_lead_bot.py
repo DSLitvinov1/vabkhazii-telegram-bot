@@ -146,6 +146,22 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["lead_type"], "transfer")
 
+    def test_generic_excursion_demand_with_date_and_party_is_kept(self):
+        result, reason = self.classify(
+            "Подскажите, куда съездить завтра из Гагры? Нас четверо."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_generic_sightseeing_question_without_trip_details_stays_filtered(self):
+        result, reason = self.classify(
+            "Что посмотреть в Сухуме?"
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
     def test_route_price_question_is_kept_as_excursion(self):
         result, reason = self.classify(
             "Подскажите, сколько будет стоить съездить на Рицу завтра, нас двое?"
