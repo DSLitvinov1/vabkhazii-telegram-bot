@@ -98,6 +98,29 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIsNotNone(reason)
 
+    def test_oli_taxi_request_with_tsandripsh_spelling_is_kept(self):
+        result, reason = self.classify(
+            "Добрый день народ. Подскажите пожалуйста такси Сухума Цандрипш"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+
+    def test_oli_followup_chain_is_recognized_as_strong_transfer(self):
+        text = (
+            "Добрый день народ. Подскажите пожалуйста такси Сухума Цандрипш\n"
+            "Сколько это будет стоить?\n"
+            "Надо забрать двух человек с вещами и привезти в Цандрипш"
+        )
+        result, reason = self.classify(text)
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(lead_bot.detect_people(text), 2)
+        self.assertTrue(lead_bot.detect_baggage(text))
+        self.assertIn("Цандрыпш", lead_bot.detect_all_places(text))
+        self.assertIn("Сухум", lead_bot.detect_all_places(text))
+
     def test_direct_excursion_request_is_kept(self):
         result, reason = self.classify(
             "Ищем индивидуальную экскурсию на Рицу завтра, нас 3 человека."
