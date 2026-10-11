@@ -2380,7 +2380,27 @@ def infer_contextual_service_intent(text):
             "посоветуйте маршрут", "подскажите маршрут",
         ]
     )
-    if generic_excursion_interest and places and has_trip_detail:
+    local_excursion_places = {
+        "Цандрыпш", "Гагра", "Лдза", "Пицунда", "Гудаута",
+        "Новый Афон", "Сухум", "Очамчыра", "Ткуарчал",
+        "Алахадзы", "Бзыпта", "Лыхны", "Кындыг",
+    }
+    local_origin = any(place in local_excursion_places for place in places)
+    local_presence = any(
+        marker in lower
+        for marker in [
+            "мы в ", "я в ", "сейчас в ", "отдыхаем в ", "отдыхаю в ",
+            "живем в ", "живём в ", "остановились в ", "из гагры",
+            "из пицунды", "из сухума", "из нового афона", "из гудауты",
+        ]
+    )
+    if generic_excursion_interest and local_origin and (
+        has_trip_detail
+        or local_presence
+        or "?" in text
+        or "подскаж" in lower
+        or "посовет" in lower
+    ):
         return "excursion"
 
     return None
