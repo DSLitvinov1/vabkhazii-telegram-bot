@@ -18,7 +18,7 @@ assert "if: github.event_name != 'push'" in logo
 assert "FORCE_RUN: ${{ inputs.force_logolead || '0' }}" in logo
 assert 'ENABLE_WEB: "1"' in logo
 assert 'ENABLE_MARKETS: "1"' in logo
-assert "DELIVERY_ENABLED: ${{ github.event_name == 'schedule' && '1' || (inputs.deliver || '0') }}" in logo
+assert "DELIVERY_ENABLED: ${{ (github.event_name == 'schedule' || contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.deliver || '0') }}" in logo
 assert 'deliver:' in logo
 assert 'min_score:' in logo
 assert "MIN_SCORE: ${{ inputs.min_score || '60' }}" in logo
@@ -67,3 +67,5 @@ assert 'python failure_alert.py' in logo
 assert 'MARKET_INTERVAL_MINUTES: "60"' in logo
 assert 'LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}' in logo
 assert 'LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}' not in logo
+
+assert 'logolead-live-check' in logo
