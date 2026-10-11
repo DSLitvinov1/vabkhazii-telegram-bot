@@ -54,3 +54,6 @@ print('PIPELINE_TEST_OK')
 
 assert 'русскоязычный таиланд' in lead_bot.CORE_DISCOVERY_QUERIES
 assert 'мамы паттайя' in lead_bot.DISCOVERY_QUERIES
+
+assert 'ru_chat_thailand' in lead_bot.PUBLIC_GROUP_SEEDS
+assert 'ru_tai' in lead_bot.PUBLIC_GROUP_SEEDS

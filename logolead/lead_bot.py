@@ -116,6 +116,12 @@ COMMERCIAL_CHAT_MARKERS=[
     'курсы логопедов','вакансии логопед','обучение логопедов',
 ]
 
+# Only read publicly addressable groups. Never join them or send messages.
+PUBLIC_GROUP_SEEDS = (
+    'ru_chat_thailand', 'ru_tai', 'russian_in_thailand',
+    'chat_thailand', 'thailand_russia_ru', 'russian_thailand',
+)
+
 def load_state():
     STATE_DIR.mkdir(exist_ok=True)
     try:
@@ -493,6 +499,25 @@ async def discover_public_groups(client,state,now):
             print('DISCOVERY_WARN',query,type(exc).__name__)
         if len(groups)>=GROUP_CACHE_LIMIT:
             break
+
+    # Explicitly verify a small list of public Russian-speaking communities.
+    # They are candidates only: private, restricted and broadcast chats are skipped.
+    for username in PUBLIC_GROUP_SEEDS:
+        if username in groups:
+            continue
+        try:
+            entity = await client.get_entity(username)
+            if not chat_allowed(entity):
+                continue
+            title = (getattr(entity, 'title', '') or username).strip()
+            if any(word in title.lower() for word in COMMERCIAL_CHAT_MARKERS):
+                continue
+            groups[username] = title
+        except FloodWaitError as exc:
+            print('SEED_GROUP_FLOOD_WAIT', exc.seconds)
+            break
+        except Exception as exc:
+            print('SEED_GROUP_UNAVAILABLE', username, type(exc).__name__)
 
     if groups:
         state['groups']=groups
