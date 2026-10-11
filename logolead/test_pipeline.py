@@ -83,3 +83,10 @@ state={}
 batches=[lead_bot.choose_group_scan(groups,{'parent_0':'Мамы'},state,3) for _ in range(2)]
 assert all(batch[0][0]=='parent_0' for batch in batches)
 assert len({u for batch in batches for u,_ in batch})==5
+
+# Group-history catch-up rotates too, even when an early group is very busy.
+backfill={'group_'+str(i):1000 for i in range(7)}
+state={}
+sample=[lead_bot.choose_backfill_groups(backfill,state,3) for _ in range(3)]
+assert len({name for batch in sample for name,_ in batch})==7
+assert lead_bot.choose_backfill_groups(backfill,state,0)==[]

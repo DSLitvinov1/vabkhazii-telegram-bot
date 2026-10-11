@@ -78,3 +78,6 @@ assert 'python send_live_test.py' in logo
 assert "FORCE_RUN: ${{ (github.event_name == 'push' && (contains(github.event.head_commit.message, '[logolead-live-check]') || contains(github.event.head_commit.message, '[logolead-production-scan]'))) && '1' || (inputs.force_logolead || '0') }}" in logo
 
 assert 'logolead-production-scan' in logo
+
+assert 'BACKFILL_GROUPS_PER_RUN: "6"' in logo
+assert 'BACKFILL_SCAN_LIMIT: "240"' in logo

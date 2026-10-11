@@ -164,6 +164,18 @@ def choose_group_scan(all_groups, global_found, state, max_groups):
     return chosen
 
 
+def choose_backfill_groups(backfill_ids,state,limit):
+    """Fairly process public-group history without starving busy groups."""
+    items=list(backfill_ids.items())
+    if limit<=0 or not items:
+        return []
+    cursor=int(state.get('backfill_cursor',0) or 0)%len(items)
+    size=min(limit,len(items))
+    chosen=[items[(cursor+i)%len(items)] for i in range(size)]
+    state['backfill_cursor']=(cursor+size)%len(items)
+    return chosen
+
+
 def load_state():
     STATE_DIR.mkdir(exist_ok=True)
     try:
@@ -744,7 +756,7 @@ async def main():
 
     state['group_last_ids']=group_last_ids
 
-    backfill_items=list(group_backfill_ids.items())[:BACKFILL_GROUPS_PER_RUN]
+    backfill_items=choose_backfill_groups(group_backfill_ids,state,BACKFILL_GROUPS_PER_RUN)
     if backfill_items:
         print('BACKFILL_SET',len(backfill_items),'PENDING',len(group_backfill_ids))
     for username,offset_id in backfill_items:
