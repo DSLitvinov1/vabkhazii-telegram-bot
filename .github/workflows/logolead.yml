@@ -57,6 +57,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r logolead/requirements.txt
 
+      - name: Probe public speech-therapy sources
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-source-audit]')
+        continue-on-error: true
+        working-directory: logolead
+        run: python source_probe.py
+
       - name: Test LogoLead
         if: github.event_name != 'schedule'
         working-directory: logolead
