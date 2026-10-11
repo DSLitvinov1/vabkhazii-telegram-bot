@@ -8,7 +8,7 @@ session.auth_key = AuthKey(bytes(range(256)))
 secret = session.save()
 assert secret.startswith('1')
 assert normalize_tg_session(secret) == secret
-assert normalize_tg_session('\\nOut: ' + secret + '\\nDone') == secret
+assert normalize_tg_session('\nOut: ' + secret + '\nDone') == secret
 assert normalize_tg_session('') == ''
 try:
     normalize_tg_session('bad string')
