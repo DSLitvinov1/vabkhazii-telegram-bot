@@ -189,6 +189,8 @@ def score(text):
         points+=5; why.append('формат/география')
     if meta['age'] is not None:
         points+=5; why.append('возраст ребенка')
+    if need_hit and help_hit and personal_hit and not direct_hit and points<60:
+        points+=10; why.append('родитель просит помощи по конкретной речевой проблеме')
     if points==0 and specialist_hit and (question_hit or 'подскажите' in t):
         points=25; why.append('вопрос о специалисте')
     if ambiguous_hit and not direct_hit and not help_hit and not question_hit and not personal_hit:

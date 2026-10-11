@@ -20,7 +20,7 @@ BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN','')
 CHAT_ID=os.environ.get('LOGOLEAD_CHAT_ID','')
 
 STATE_VERSION=4
-CLASSIFIER_VERSION=8
+CLASSIFIER_VERSION=9
 STATE_DIR=Path('.lead_state')
 STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))

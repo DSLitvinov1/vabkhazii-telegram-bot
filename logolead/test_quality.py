@@ -66,3 +66,9 @@ assert score_market_order('Я логопед. Запись открыта, пр�
 assert score_market_order('Логопед-дефектолог. Возраст ребёнка 2 года. Ребёнок плохо говорит','Telegram')[0]<60
 
 assert score('Здравствуйте. Ищу логопеда для дочери 7 лет. Отсутствует звук Р')[0]>=60
+
+# Parents describing their own child and asking for help are actionable leads.
+assert score('Ребёнку 3 года, он не говорит, куда обратиться?')[0]>=60
+assert score('Ребёнок 4 года плохо говорит, что делать?')[0]>=60
+assert score('Здравствуйте. Ищу логопеда для дочери 7 лет. Отсутствует звук Р')[0]>=60
+assert score('Я логопед. Открыта запись на занятия')[0]==0
