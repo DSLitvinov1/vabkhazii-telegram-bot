@@ -7,6 +7,7 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.contacts import SearchRequest
 from telethon.tl.types import User
 from classifier import score, score_market_order
+from session_compat import normalize_tg_session
 from card import build
 from web_sources import collect_cloud_web
 from market_sources import collect_markets
@@ -14,7 +15,7 @@ from sources import merge_unique, content_signature
 
 TG_API_ID=int(os.environ.get('TG_API_ID','0'))
 TG_API_HASH=os.environ.get('TG_API_HASH','')
-TG_SESSION=os.environ.get('TG_SESSION','')
+TG_SESSION=normalize_tg_session(os.environ.get('TG_SESSION',''))
 BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN','')
 CHAT_ID=os.environ.get('LOGOLEAD_CHAT_ID','')
 

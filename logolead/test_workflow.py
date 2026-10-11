@@ -71,3 +71,5 @@ assert 'LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}' not in logo
 assert 'logolead-live-check' in logo
 
 assert 'python source_probe.py' in logo
+
+assert 'python test_session_compat.py' in logo
