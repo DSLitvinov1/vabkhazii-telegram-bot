@@ -51,3 +51,6 @@ assert lead_bot.candidate_priority(profi,now)>lead_bot.candidate_priority(kwork,
 assert lead_bot.candidate_priority(kwork,now)>lead_bot.candidate_priority(telegram,now)
 
 print('PIPELINE_TEST_OK')
+
+assert 'русскоязычный таиланд' in lead_bot.CORE_DISCOVERY_QUERIES
+assert 'мамы паттайя' in lead_bot.DISCOVERY_QUERIES
