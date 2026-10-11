@@ -1,4 +1,12 @@
-FAIL
+PASS
+test_joined_sochi_chat_is_allowed (test_lead_bot.LeadClassificationTests.test_joined_sochi_chat_is_allowed) ... ok
+test_latin_place_spellings_are_recognized (test_lead_bot.LeadClassificationTests.test_latin_place_spellings_are_recognized) ... ok
+test_local_sightseeing_question_is_kept_as_warm_excursion (test_lead_bot.LeadClassificationTests.test_local_sightseeing_question_is_kept_as_warm_excursion) ... ok
+test_local_where_to_go_question_is_kept_as_excursion (test_lead_bot.LeadClassificationTests.test_local_where_to_go_question_is_kept_as_excursion) ... ok
+test_more_abkhazia_localities_are_recognized_for_transfer_context (test_lead_bot.LeadClassificationTests.test_more_abkhazia_localities_are_recognized_for_transfer_context) ... ok
+test_natural_bus_question_is_kept_warm (test_lead_bot.LeadClassificationTests.test_natural_bus_question_is_kept_warm) ... ok
+test_natural_transfer_verbs_are_understood (test_lead_bot.LeadClassificationTests.test_natural_transfer_verbs_are_understood) ... ok
+test_oli_followup_chain_is_recognized_as_strong_transfer (test_lead_bot.LeadClassificationTests.test_oli_followup_chain_is_recognized_as_strong_transfer) ... ok
 test_oli_taxi_request_with_tsandripsh_spelling_is_kept (test_lead_bot.LeadClassificationTests.test_oli_taxi_request_with_tsandripsh_spelling_is_kept) ... ok
 test_one_city_taxi_question_is_kept (test_lead_bot.LeadClassificationTests.test_one_city_taxi_question_is_kept) ... ok
 test_past_trip_story_is_filtered (test_lead_bot.LeadClassificationTests.test_past_trip_story_is_filtered) ... ok
@@ -27,15 +35,7 @@ test_transport_news_is_filtered (test_lead_bot.LeadClassificationTests.test_tran
 test_travel_time_question_is_not_mistaken_for_transfer_lead (test_lead_bot.LeadClassificationTests.test_travel_time_question_is_not_mistaken_for_transfer_lead) ... ok
 test_weather_chatter_is_filtered (test_lead_bot.LeadClassificationTests.test_weather_chatter_is_filtered) ... ok
 
-======================================================================
-FAIL: test_generic_sightseeing_question_without_trip_details_stays_filtered (test_lead_bot.LeadClassificationTests.test_generic_sightseeing_question_without_trip_details_stays_filtered)
-----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/home/runner/work/vabkhazii-telegram-bot/vabkhazii-telegram-bot/tests/test_lead_bot.py", line 162, in test_generic_sightseeing_question_without_trip_details_stays_filtered
-    self.assertIsNone(result)
-AssertionError: {'score': 63, 'level': '🟡 ТЁПЛЫЙ', 'lead_type': 'excursion', 'reasons': ['автор — человек', 'скрытый коммерческий интерес', 'экскурсия', 'скрытый спрос на экскурсию'], 'bucket': 'direct', 'temperature': 'warm'} is not None
-
 ----------------------------------------------------------------------
 Ran 67 tests in 0.027s
 
-FAILED (failures=1)
+OK
