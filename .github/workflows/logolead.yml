@@ -110,6 +110,7 @@ jobs:
           python test_full.py
           python test_delivery_preflight.py
           python test_session_compat.py
+          python test_send_live_test.py
 
       - name: Verify dedicated speech bot and recipient
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.deliver == '1') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-live-check]'))
@@ -118,6 +119,14 @@ jobs:
           LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
           LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
         run: python delivery_preflight.py
+
+      - name: Send one labeled Telegram delivery test
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-live-check]')
+        working-directory: logolead
+        env:
+          LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
+          LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
+        run: python send_live_test.py
 
       - name: Run LogoLead
         if: github.event_name != 'push' || contains(github.event.head_commit.message, '[logolead-live-check]')
@@ -137,7 +146,7 @@ jobs:
           DELIVERY_ENABLED: ${{ (github.event_name == 'schedule' || contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.deliver || '0') }}
           ENABLE_FEEDBACK: "0"
           RUN_INTERVAL_MINUTES: "10"
-          FORCE_RUN: ${{ inputs.force_logolead || '0' }}
+          FORCE_RUN: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.force_logolead || '0') }}
           DISCOVERY_INTERVAL_MINUTES: "360"
           DISCOVERY_ROTATING_QUERIES_PER_REFRESH: "18"
           MAX_DISCOVERED_GROUPS: "30"

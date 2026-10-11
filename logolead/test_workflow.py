@@ -73,3 +73,6 @@ assert 'logolead-live-check' in logo
 assert 'python source_probe.py' in logo
 
 assert 'python test_session_compat.py' in logo
+
+assert 'python send_live_test.py' in logo
+assert "FORCE_RUN: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.force_logolead || '0') }}" in logo
