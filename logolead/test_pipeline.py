@@ -57,3 +57,16 @@ assert 'мамы паттайя' in lead_bot.DISCOVERY_QUERIES
 
 assert 'ru_chat_thailand' in lead_bot.PUBLIC_GROUP_SEEDS
 assert 'ru_tai' in lead_bot.PUBLIC_GROUP_SEEDS
+
+# Parent-oriented public chats take priority over generic travel discussions.
+ordered = sorted([
+    ('generic_russia','Русские в Таиланде'),
+    ('pattayadeti','Паттайя. ДЕТИ и их родители'),
+    ('unknown_moms','Мамы Паттайи'),
+    ('direct_group','Общий чат'),
+], key=lambda item: lead_bot.discovery_priority(item,{'direct_group':'Общий чат'}))
+assert ordered[0][0] == 'direct_group'
+assert ordered[1][0] in ('pattayadeti','unknown_moms')
+assert lead_bot.discovery_priority(('unknown_moms','Мамы Паттайи')) == 1
+assert lead_bot.discovery_priority(('generic_russia','Русские в Таиланде')) == 3
+assert 'pattayadeti' in lead_bot.PUBLIC_GROUP_SEEDS

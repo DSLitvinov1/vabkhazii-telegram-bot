@@ -120,7 +120,25 @@ COMMERCIAL_CHAT_MARKERS=[
 PUBLIC_GROUP_SEEDS = (
     'ru_chat_thailand', 'ru_tai', 'russian_in_thailand',
     'chat_thailand', 'thailand_russia_ru', 'russian_thailand',
+    'pattayadeti', 'thailand_chat_russ', 'russiansin_thailand',
+    'pattayachat', 'forum_thailand',
 )
+
+FAMILY_GROUP_MARKERS = ('родител', 'мам', 'дети', 'детск', 'семейн', 'family', 'kids')
+
+
+def discovery_priority(item, global_found=None):
+    """Prioritize family-oriented chats, then verified public groups."""
+    global_found = global_found or {}
+    username, title = item
+    if username in global_found:
+        return 0
+    if any(tag in (title or '').lower() for tag in FAMILY_GROUP_MARKERS):
+        return 1
+    if username.lower() in PUBLIC_GROUP_SEEDS:
+        return 2
+    return 3
+
 
 def load_state():
     STATE_DIR.mkdir(exist_ok=True)
@@ -641,7 +659,9 @@ async def main():
     group_backfill_ids=state.get('group_backfill_ids') or {}
 
     all_groups=[item for item in groups.items() if item[0].strip().lstrip('@').lower() not in EXCLUDED_CHAT_USERNAMES]
-    priority=[item for item in all_groups if item[0] in seed_groups]
+    priority=sorted(
+        [item for item in all_groups if discovery_priority(item,seed_groups)<3],
+        key=lambda item: discovery_priority(item,seed_groups))
     priority_names={item[0] for item in priority}
     others=[item for item in all_groups if item[0] not in priority_names]
     remaining=max(0,MAX_DISCOVERED_GROUPS-len(priority))
