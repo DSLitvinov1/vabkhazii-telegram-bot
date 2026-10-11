@@ -41,7 +41,7 @@ assert 'statuses: write' in logo
 assert "'context':'logolead/tests'" in logo
 assert 'if: always()' in logo
 
-assert 'group: telegram-user-session' in legacy
+assert 'group: vabkhazii-leads-production' in legacy
 assert 'name: VAbkhazii Leads Bot' in legacy
 assert 'Run LogoLead' not in legacy
 assert 'LOGOLEAD_CHAT_ID' not in legacy
