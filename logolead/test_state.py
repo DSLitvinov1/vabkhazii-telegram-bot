@@ -50,3 +50,17 @@ assert lead_bot.format_published(published,now)=='20.09 21:00 МСК · 37 ми�
 assert lead_bot.freshness_text(published,published+timedelta(hours=2,minutes=5))=='2 ч назад'
 assert lead_bot.freshness_text(published,published+timedelta(days=2,hours=1))=='2 дн назад'
 print('STATE_TEST_OK')
+
+# Rescoring after classifier update must not discard pending history backfill.
+state,_ = use_state({
+    'version':lead_bot.STATE_VERSION,
+    'classifier_version':lead_bot.CLASSIFIER_VERSION-1,
+    'seen':['old-message'],
+    'group_last_ids':{'parents':900},
+    'group_backfill_ids':{'parents':400},
+    'sent':['already-delivered'],
+})
+assert state['seen'] == []
+assert state['group_last_ids'] == {}
+assert state['group_backfill_ids'] == {'parents':400}
+assert state['sent'] == ['already-delivered']

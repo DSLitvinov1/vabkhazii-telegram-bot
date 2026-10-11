@@ -170,7 +170,7 @@ def score(text):
 
     points=0
     if direct_hit:
-        points+=55; why.append('прямой поиск специалиста')
+        points+=60; why.append('прямой поиск специалиста')
     elif ambiguous_hit:
         points+=35; why.append('похоже на краткий запрос')
     if generic_specialist_hit and need_hit and not direct_hit:

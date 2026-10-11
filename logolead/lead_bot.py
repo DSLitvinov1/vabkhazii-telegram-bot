@@ -20,7 +20,7 @@ BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN','')
 CHAT_ID=os.environ.get('LOGOLEAD_CHAT_ID','')
 
 STATE_VERSION=4
-CLASSIFIER_VERSION=9
+CLASSIFIER_VERSION=10
 STATE_DIR=Path('.lead_state')
 STATE_FILE=STATE_DIR/'state.json'
 MAX_AGE_HOURS=int(os.environ.get('MAX_AGE_HOURS','72'))
@@ -198,7 +198,7 @@ def load_state():
     if state.get('classifier_version')!=CLASSIFIER_VERSION:
         state['seen']=[]
         state['group_last_ids']={}
-        state['group_backfill_ids']={}
+        # Keep history offsets while rescoring already-seen speech requests.
         state['classifier_version']=CLASSIFIER_VERSION
         for name in ('last_run','last_deep_scan','last_market_run','last_web_run'):
             state.pop(name,None)

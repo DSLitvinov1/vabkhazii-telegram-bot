@@ -72,3 +72,10 @@ assert score('Ребёнку 3 года, он не говорит, куда об
 assert score('Ребёнок 4 года плохо говорит, что делать?')[0]>=60
 assert score('Здравствуйте. Ищу логопеда для дочери 7 лет. Отсутствует звук Р')[0]>=60
 assert score('Я логопед. Открыта запись на занятия')[0]==0
+
+# A definite buyer request is actionable without mentioning age, city or budget.
+assert score('Ищу логопеда')[0] >= 60
+assert score('Посоветуйте логопеда')[0] >= 60
+assert score('Поделитесь контактом логопеда')[0] >= 60
+assert score('Я логопед, набираю учеников')[0] == 0
+assert score('Вакансия: требуется логопед в клинику')[0] == 0
