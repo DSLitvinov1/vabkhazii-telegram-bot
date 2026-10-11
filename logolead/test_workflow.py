@@ -15,7 +15,7 @@ assert 'cache: "pip"' in logo
 assert 'cache-dependency-path: "logolead/requirements.txt"' in logo
 assert 'pip install -r logolead/requirements.txt' in logo
 assert "if: github.event_name != 'push'" in logo
-assert "FORCE_RUN: ${{ inputs.force_logolead || '0' }}" in logo
+assert "FORCE_RUN: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.force_logolead || '0') }}" in logo
 assert 'ENABLE_WEB: "1"' in logo
 assert 'ENABLE_MARKETS: "1"' in logo
 assert "DELIVERY_ENABLED: ${{ (github.event_name == 'schedule' || contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.deliver || '0') }}" in logo
