@@ -87,6 +87,15 @@ jobs:
           DEEP_GROUP_SEARCH_LIMIT: "8"
         run: python lead_bot.py
 
+      - name: Identify exact public Russian Thailand speech-lead groups
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-group-check]')
+        working-directory: logolead
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+        run: python group_match_audit.py
+
       - name: Test LogoLead
         if: github.event_name != 'schedule'
         working-directory: logolead
