@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from classifier import score_market_order
 from market_sources import (
     PROFI_PAGES, collect_kwork, fetch_text as market_fetch, parse_profi_page)
-from web_sources import collect_cloud_web
+from web_sources import collect_web
 
 
 def main():
@@ -34,8 +34,12 @@ def main():
     except Exception as exc:
         result['profi'] = {'error': type(exc).__name__}
     try:
-        posts = collect_cloud_web(72)
-        result['parent_forum'] = {'fresh_public_posts': len(posts)}
+        posts = collect_web(72)
+        by_source = {}
+        for post in posts:
+            key = post.get('source','unknown')
+            by_source[key] = by_source.get(key,0) + 1
+        result['parent_forum'] = {'fresh_public_posts': len(posts), 'by_source': by_source}
     except Exception as exc:
         result['parent_forum'] = {'error': type(exc).__name__}
     print('LOGOLEAD_SOURCE_PROBE', json.dumps(result, ensure_ascii=False))

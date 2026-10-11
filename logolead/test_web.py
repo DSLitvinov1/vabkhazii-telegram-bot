@@ -17,3 +17,21 @@ assert not woman_title_relevant('Мужчина говорит, что люби�
 assert not woman_title_relevant('Дочь поздно возвращается домой')
 
 print('WEB_TEST_OK')
+
+# The production forum collector must include all three independent sources.
+import web_sources as ws
+from datetime import datetime,timezone
+now=datetime.now(timezone.utc)
+def make_item(source, url):
+    return {'source':source, 'url':url,'text':'Ребёнку 3 года нужен логопед',
+            'published':now}
+_originals=(ws.collect_babyblog,ws.collect_umama,ws.collect_woman)
+try:
+    ws.collect_babyblog=lambda max_age_hours=72:[make_item('Babyblog','https://babyblog.ru/test')]
+    ws.collect_umama=lambda max_age_hours=72:[make_item('U-mama','https://u-mama.ru/test')]
+    ws.collect_woman=lambda max_age_hours=72:[make_item('Woman.ru','https://woman.ru/test')]
+    sources=ws.collect_web(72)
+    assert len(sources)==3
+    assert {item['source'] for item in sources}=={'Babyblog','U-mama','Woman.ru'}
+finally:
+    ws.collect_babyblog,ws.collect_umama,ws.collect_woman=_originals

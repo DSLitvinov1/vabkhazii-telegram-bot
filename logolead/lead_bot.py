@@ -9,7 +9,7 @@ from telethon.tl.types import User
 from classifier import score, score_market_order
 from session_compat import normalize_tg_session
 from card import build
-from web_sources import collect_cloud_web
+from web_sources import collect_web
 from market_sources import collect_markets
 from sources import merge_unique, content_signature
 
@@ -888,7 +888,7 @@ async def main():
             web_due=True
 
     try:
-        web_items=await asyncio.to_thread(collect_cloud_web,MAX_AGE_HOURS) if web_due else []
+        web_items=await asyncio.to_thread(collect_web,MAX_AGE_HOURS) if web_due else []
         print('WEB_ITEMS',len(web_items))
         for item in web_items:
             stats['web_checked']+=1
