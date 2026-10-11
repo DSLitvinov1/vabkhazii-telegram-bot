@@ -63,6 +63,30 @@ jobs:
         working-directory: logolead
         run: python source_probe.py
 
+      - name: Verify public Telegram speech leads without messaging
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-telegram-audit]')
+        working-directory: logolead
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+          DELIVERY_ENABLED: "0"
+          ENABLE_MARKETS: "0"
+          ENABLE_WEB: "0"
+          ENABLE_FEEDBACK: "0"
+          SEND_STATUS: "0"
+          FORCE_RUN: "1"
+          MIN_SCORE: "60"
+          MAX_AGE_HOURS: "72"
+          GLOBAL_ROTATING_QUERIES_PER_RUN: "3"
+          DISCOVERY_ROTATING_QUERIES_PER_REFRESH: "3"
+          GROUP_SCAN_LIMIT: "12"
+          INITIAL_GROUP_SCAN_LIMIT: "25"
+          BACKFILL_GROUPS_PER_RUN: "0"
+          DEEP_GROUP_SCAN_COUNT: "2"
+          DEEP_GROUP_SEARCH_LIMIT: "8"
+        run: python lead_bot.py
+
       - name: Test LogoLead
         if: github.event_name != 'schedule'
         working-directory: logolead
