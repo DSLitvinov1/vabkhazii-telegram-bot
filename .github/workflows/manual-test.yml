@@ -1,0 +1,60 @@
+name: VAbkhazii Manual Regression Test
+
+on:
+  push:
+    paths:
+      - ".github/workflows/manual-test.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencies
+        run: python -m pip install --quiet telethon
+
+      - name: Regression tests
+        id: tests
+        continue-on-error: true
+        run: |
+          set +e
+          python -m py_compile lead_bot.py > test-output.txt 2>&1
+          SYNTAX=$?
+          if [ "$SYNTAX" -eq 0 ]; then
+            LEADS_UNIT_TEST=1 python -m unittest discover -s tests -p "test_*.py" -v >> test-output.txt 2>&1
+            CODE=$?
+          else
+            CODE=$SYNTAX
+          fi
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then
+            echo "PASS" > test-status.txt
+          else
+            echo "FAIL" > test-status.txt
+          fi
+          tail -n 40 test-output.txt >> test-status.txt
+
+      - name: Record result
+        run: |
+          mkdir -p .ci-status
+          cp test-status.txt .ci-status/manual-test.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ci-status/manual-test.txt
+          git commit -m "Record VAbkhazii manual regression test result" || exit 0
+          git push
+
+      - name: Fail if tests failed
+        if: steps.tests.outputs.exit_code != '0'
+        run: exit 1
