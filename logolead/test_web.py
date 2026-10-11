@@ -35,3 +35,15 @@ try:
     assert {item['source'] for item in sources}=={'Babyblog','U-mama','Woman.ru'}
 finally:
     ws.collect_babyblog,ws.collect_umama,ws.collect_woman=_originals
+
+from web_sources import choose_umama_topics, UMAMA_INDEXES
+items=[('https://u-mama.ru/a','Новый сад'),
+       ('https://u-mama.ru/b','Новости школы'),
+       ('https://u-mama.ru/c','Нужен логопед, ребенок не говорит'),
+       ('https://u-mama.ru/d','Задержка речи, что делать')]
+subset=choose_umama_topics(items,3)
+assert len(subset)==3
+assert any('логопед' in title.lower() for _,title in subset)
+assert any('задержка речи' in title.lower() for _,title in subset)
+assert '/forum/kids/kindergarten/' in UMAMA_INDEXES
+assert '/forum/kids/schoolboy/' in UMAMA_INDEXES

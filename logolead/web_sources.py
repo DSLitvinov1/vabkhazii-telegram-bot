@@ -9,8 +9,8 @@ WOMAN_FORUM='/forum/?sort=new'
 WOMAN_STRONG_TERMS=('логопед','дефектолог','нейрологопед','зрр','зпрр','дисграф','дислекс','задержка речи','запуск речи')
 WOMAN_SPEECH_TERMS=('речь','говорит','разговаривает','выговаривает','произносит','картавит','шепеляв','заика','не говорит','не разговаривает')
 WOMAN_CHILD_TERMS=('ребенок','ребёнок','ребенку','ребёнку','дочь','дочка','сын','сыну','малыш','малышка','дети','ребята')
-UMAMA_INDEXES=('/forum/last/','/forum/kids/1-3/','/forum/kids/3-7/','/forum/kids/special-child/','/forum/kids/child-health/')
-UMAMA_CATEGORIES=('/forum/kids/1-3/','/forum/kids/3-7/','/forum/kids/schoolboy/','/forum/kids/special-child/','/forum/kids/child-health/')
+UMAMA_INDEXES=('/forum/last/','/forum/kids/1-3/','/forum/kids/3-7/','/forum/kids/special-child/','/forum/kids/child-health/','/forum/kids/schoolboy/','/forum/kids/kindergarten/')
+UMAMA_CATEGORIES=('/forum/kids/1-3/','/forum/kids/3-7/','/forum/kids/schoolboy/','/forum/kids/special-child/','/forum/kids/child-health/','/forum/kids/kindergarten/')
 BABYBLOG_FEEDS=[
     '/community/3_6_study',
     '/community/education',
@@ -75,11 +75,32 @@ def collect_babyblog(max_age_hours=72, max_posts_per_feed=12):
 def clean_fragment(value):
     return ' '.join(html.unescape(re.sub(r'<[^>]+>',' ',value or '')).split())
 
+UMAMA_TOPIC_TERMS=('логопед','дефектолог','реч','говорит','зрр','зпрр',
+                   'алалия','дислек','дисграф','картав','заик','не выговаривает')
+
+
+def choose_umama_topics(topics, max_topics=30):
+    """Reserve half the scan for speech-themed topics, the rest for new threads."""
+    target_count=(max_topics+1)//2
+    interested=[x for x in topics if any(word in x[1].lower() for word in UMAMA_TOPIC_TERMS)]
+    chosen=[]
+    seen=set()
+    for section in (interested[:target_count], topics):
+        for candidate in section:
+            if candidate[0] not in seen:
+                chosen.append(candidate)
+                seen.add(candidate[0])
+            if len(chosen)>=max_topics:
+                return chosen
+    return chosen
+
+
 def collect_umama(max_age_hours=72, max_topics=30):
     cutoff=datetime.now(timezone.utc)-timedelta(hours=max_age_hours)
     link_re=re.compile(r'<a[^>]+href="(?P<href>(?:https://u-mama\.ru)?/forum/kids/[^"]+/\d+/)"[^>]*>(?P<label>.*?)</a>',re.S|re.I)
     topics=[];seen=set()
     for index_path in UMAMA_INDEXES:
+        per_index=0
         try:index=fetch_text(UMAMA_BASE+index_path,900_000)
         except Exception as e:
             print('UMAMA_INDEX_WARN',index_path,type(e).__name__);continue
@@ -91,11 +112,10 @@ def collect_umama(max_age_hours=72, max_topics=30):
             if url in seen:continue
             title=clean_fragment(m.group('label'))
             if not title or title.isdigit():continue
-            seen.add(url);topics.append((url,title))
-            if len(topics)>=max_topics:break
-        if len(topics)>=max_topics:break
+            seen.add(url);topics.append((url,title));per_index+=1
+            if per_index>=max(15,max_topics//2):break
     out=[]
-    for url,title in topics:
+    for url,title in choose_umama_topics(topics,max_topics):
         try:page=fetch_text(url,700_000)
         except Exception as e:
             print('UMAMA_TOPIC_WARN',type(e).__name__);continue
