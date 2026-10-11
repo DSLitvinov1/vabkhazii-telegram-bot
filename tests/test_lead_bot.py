@@ -155,12 +155,14 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertEqual(result["lead_type"], "excursion")
         self.assertEqual(result["temperature"], "warm")
 
-    def test_generic_sightseeing_question_without_trip_details_stays_filtered(self):
+    def test_generic_sightseeing_question_in_local_city_is_warm_excursion(self):
         result, reason = self.classify(
             "Что посмотреть в Сухуме?"
         )
-        self.assertIsNone(result)
-        self.assertIsNotNone(reason)
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+        self.assertEqual(result["temperature"], "warm")
 
     def test_route_price_question_is_kept_as_excursion(self):
         result, reason = self.classify(
