@@ -15,10 +15,10 @@ assert 'cache: "pip"' in logo
 assert 'cache-dependency-path: "logolead/requirements.txt"' in logo
 assert 'pip install -r logolead/requirements.txt' in logo
 assert "if: github.event_name != 'push'" in logo
-assert "FORCE_RUN: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.force_logolead || '0') }}" in logo
+assert "FORCE_RUN: ${{ (github.event_name == 'push' && (contains(github.event.head_commit.message, '[logolead-live-check]') || contains(github.event.head_commit.message, '[logolead-production-scan]'))) && '1' || (inputs.force_logolead || '0') }}" in logo
 assert 'ENABLE_WEB: "1"' in logo
 assert 'ENABLE_MARKETS: "1"' in logo
-assert "DELIVERY_ENABLED: ${{ (github.event_name == 'schedule' || contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.deliver || '0') }}" in logo
+assert "DELIVERY_ENABLED: ${{ (github.event_name == 'schedule' || contains(github.event.head_commit.message, '[logolead-live-check]') || contains(github.event.head_commit.message, '[logolead-production-scan]')) && '1' || (inputs.deliver || '0') }}" in logo
 assert 'deliver:' in logo
 assert 'min_score:' in logo
 assert "MIN_SCORE: ${{ inputs.min_score || '60' }}" in logo
@@ -75,4 +75,6 @@ assert 'python source_probe.py' in logo
 assert 'python test_session_compat.py' in logo
 
 assert 'python send_live_test.py' in logo
-assert "FORCE_RUN: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[logolead-live-check]')) && '1' || (inputs.force_logolead || '0') }}" in logo
+assert "FORCE_RUN: ${{ (github.event_name == 'push' && (contains(github.event.head_commit.message, '[logolead-live-check]') || contains(github.event.head_commit.message, '[logolead-production-scan]'))) && '1' || (inputs.force_logolead || '0') }}" in logo
+
+assert 'logolead-production-scan' in logo
