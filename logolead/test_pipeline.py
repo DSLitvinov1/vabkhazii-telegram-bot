@@ -70,3 +70,16 @@ assert ordered[1][0] in ('pattayadeti','unknown_moms')
 assert lead_bot.discovery_priority(('unknown_moms','Мамы Паттайи')) == 1
 assert lead_bot.discovery_priority(('generic_russia','Русские в Таиланде')) == 3
 assert 'pattayadeti' in lead_bot.PUBLIC_GROUP_SEEDS
+
+# With more priority groups than slots, every group is inspected over cycles.
+groups=[('parent_'+str(i),'Мамы Таиланд '+str(i)) for i in range(5)]
+state={}
+runs=[lead_bot.choose_group_scan(groups,{},state,2) for _ in range(3)]
+assert len({username for batch in runs for username,_ in batch})==5
+assert all(len(batch)==2 for batch in runs)
+assert len({username for batch in runs for username,_ in batch})==5
+# Global matches remain at the front, but the remaining slots still rotate.
+state={}
+batches=[lead_bot.choose_group_scan(groups,{'parent_0':'Мамы'},state,3) for _ in range(2)]
+assert all(batch[0][0]=='parent_0' for batch in batches)
+assert len({u for batch in batches for u,_ in batch})==5

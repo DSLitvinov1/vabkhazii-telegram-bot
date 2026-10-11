@@ -140,6 +140,30 @@ def discovery_priority(item, global_found=None):
     return 3
 
 
+def choose_group_scan(all_groups, global_found, state, max_groups):
+    """Rotate high-priority public chats instead of permanently skipping the tail."""
+    if max_groups<=0:
+        return []
+    mandatory=[item for item in all_groups if discovery_priority(item,global_found)==0]
+    important=[item for item in all_groups if 0<discovery_priority(item,global_found)<3]
+    others=[item for item in all_groups if discovery_priority(item,global_found)==3]
+    chosen=mandatory[:max_groups]
+    remaining=max(0,max_groups-len(chosen))
+    if important and remaining:
+        count=min(remaining,len(important))
+        cursor=int(state.get('priority_scan_cursor',
+                             state.get('group_scan_cursor',0)) or 0)%len(important)
+        chosen.extend(important[(cursor+i)%len(important)] for i in range(count))
+        state['priority_scan_cursor']=(cursor+count)%len(important)
+        remaining-=count
+    if others and remaining:
+        count=min(remaining,len(others))
+        cursor=int(state.get('group_scan_cursor',0) or 0)%len(others)
+        chosen.extend(others[(cursor+i)%len(others)] for i in range(count))
+        state['group_scan_cursor']=(cursor+count)%len(others)
+    return chosen
+
+
 def load_state():
     STATE_DIR.mkdir(exist_ok=True)
     try:
@@ -659,20 +683,10 @@ async def main():
     group_backfill_ids=state.get('group_backfill_ids') or {}
 
     all_groups=[item for item in groups.items() if item[0].strip().lstrip('@').lower() not in EXCLUDED_CHAT_USERNAMES]
-    priority=sorted(
-        [item for item in all_groups if discovery_priority(item,seed_groups)<3],
-        key=lambda item: discovery_priority(item,seed_groups))
-    priority_names={item[0] for item in priority}
-    others=[item for item in all_groups if item[0] not in priority_names]
-    remaining=max(0,MAX_DISCOVERED_GROUPS-len(priority))
-    cursor=int(state.get('group_scan_cursor',0) or 0)
-    rotated=[]
-    if others and remaining:
-        count=min(remaining,len(others))
-        rotated=[others[(cursor+i)%len(others)] for i in range(count)]
-        state['group_scan_cursor']=(cursor+count)%len(others)
-    selected_groups=(priority+rotated)[:MAX_DISCOVERED_GROUPS]
-    print('GROUP_SCAN_SET',len(selected_groups),'PRIORITY',len(priority),'CACHE',len(all_groups),'CURSOR',state.get('group_scan_cursor',0))
+    selected_groups=choose_group_scan(all_groups,seed_groups,state,MAX_DISCOVERED_GROUPS)
+    priority_count=sum(discovery_priority(item,seed_groups)<3 for item in all_groups)
+    print('GROUP_SCAN_SET',len(selected_groups),'PRIORITY',priority_count,
+          'CACHE',len(all_groups),'CURSOR',state.get('priority_scan_cursor',0))
 
     for username,title in selected_groups:
         min_id=int(group_last_ids.get(username,0) or 0)
