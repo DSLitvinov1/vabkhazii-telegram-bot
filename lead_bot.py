@@ -2326,6 +2326,28 @@ def infer_contextual_service_intent(text):
     if not buyer_signal:
         return None
 
+    # Scenic destinations are usually excursion demand, even when the tourist
+    # phrases it as “how to get there”. Explicit taxi/public-transport wording
+    # still keeps the message in the transport branch below.
+    scenic_route = route in {"Рица", "Мзы", "Восточная Абхазия", "Святыни"}
+    explicit_transport_mode = any(
+        marker in lower
+        for marker in [
+            "такси", "трансфер", "машин", "водител",
+            "маршрутка", "автобус", "минивэн", "минивен", "микроавтобус",
+        ]
+    )
+    scenic_trip_question = any(
+        marker in lower
+        for marker in [
+            "как попасть", "как доехать", "как добраться", "как съездить",
+            "кто возит", "кто свозит", "хочу", "хотим", "можно ли",
+            "подскаж", "посовет", "порекоменду",
+        ]
+    )
+    if scenic_route and scenic_trip_question and not explicit_transport_mode:
+        return "excursion"
+
     if len(places) >= 2 and (
         transport_signal
         or strong_price_signal
