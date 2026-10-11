@@ -286,6 +286,30 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["lead_type"], "excursion")
 
+    def test_local_sightseeing_question_is_kept_as_warm_excursion(self):
+        result, reason = self.classify(
+            "Подскажите, что посмотреть в Гагре?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_local_where_to_go_question_is_kept_as_excursion(self):
+        result, reason = self.classify(
+            "Куда съездить из Пицунды? Мы здесь на несколько дней."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+
+    def test_broad_abkhazia_sightseeing_question_without_local_context_stays_filtered(self):
+        result, reason = self.classify(
+            "Что посмотреть в Абхазии?"
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
     def test_generic_excursion_opportunity_with_city_and_date_is_kept(self):
         result, reason = self.classify(
             "Мы в Гагре. Куда съездить завтра с ребёнком?"
