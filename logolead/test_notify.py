@@ -7,7 +7,7 @@ class Response:
     def __exit__(self,*args):
         return False
     def read(self,*args):
-        return b'{"ok":true}'
+        return b'{"ok":true,"result":{"message_id":101}}'
 
 calls=[]
 def fake_urlopen(req,timeout=20):

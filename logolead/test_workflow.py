@@ -7,10 +7,10 @@ renew=Path('../.github/workflows/renew-telegram-session.yml').read_text(encoding
 
 assert 'name: LogoLead' in logo
 assert 'push:' in logo and 'workflow_dispatch:' in logo
-assert 'schedule:' not in logo
-assert 'actions/checkout@v7' in logo
-assert 'actions/cache@v6' in logo
-assert 'actions/setup-python@v7' in logo
+assert "cron: '17 * * * *'" in logo
+assert 'actions/checkout@v4' in logo
+assert 'actions/cache@v4' in logo
+assert 'actions/setup-python@v5' in logo
 assert 'cache: "pip"' in logo
 assert 'cache-dependency-path: "logolead/requirements.txt"' in logo
 assert 'pip install -r logolead/requirements.txt' in logo
@@ -21,11 +21,11 @@ assert 'ENABLE_MARKETS: "1"' in logo
 assert "DELIVERY_ENABLED: ${{ github.event_name == 'schedule' && '1' || (inputs.deliver || '0') }}" in logo
 assert 'deliver:' in logo
 assert 'min_score:' in logo
-assert "MIN_SCORE: ${{ inputs.min_score || '50' }}" in logo
+assert "MIN_SCORE: ${{ inputs.min_score || '60' }}" in logo
 assert 'ENABLE_KWORK: "1"' in logo
 assert 'ENABLE_PROFI: "1"' in logo
-assert 'MAX_LEADS_PER_RUN: "1"' in logo
-assert 'DELIVERY_MAX_AGE_HOURS: "24"' in logo
+assert 'MAX_LEADS_PER_RUN: "0"' in logo
+assert 'DELIVERY_MAX_AGE_HOURS: "72"' in logo
 assert 'PENDING_LIMIT: "500"' in logo
 assert 'LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}' in logo
 assert '@logopedutkina' not in logo
@@ -46,7 +46,7 @@ assert 'name: VAbkhazii Leads Bot' in legacy
 assert 'Run LogoLead' not in legacy
 assert 'LOGOLEAD_CHAT_ID' not in legacy
 assert 'Run VAbkhazii Leads Bot' in legacy
-assert 'schedule:' not in legacy
+assert "cron: '7 * * * *'" in legacy
 
 assert 'workflow_dispatch:' in target
 assert 'schedule:' not in target
@@ -61,3 +61,9 @@ assert 'python logolead/renew_session.py' in renew
 assert 'group: telegram-user-session' in renew
 
 print('WORKFLOW_TEST_OK')
+
+assert 'python delivery_preflight.py' in logo
+assert 'python failure_alert.py' in logo
+assert 'MARKET_INTERVAL_MINUTES: "60"' in logo
+assert 'LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}' in logo
+assert 'LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}' not in logo

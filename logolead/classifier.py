@@ -194,3 +194,27 @@ def score(text):
     if ambiguous_hit and not direct_hit and not help_hit and not question_hit and not personal_hit:
         points=min(points,45)
     return min(100,points),why
+
+
+def score_market_order(text, source):
+    """Score a structurally verified client request on a supported marketplace."""
+    points, reasons = score(text)
+    if points == 0 and reasons:
+        return points, reasons
+    source_name = (source or '').split(' · ', 1)[0]
+    if source_name not in {'Profi.ru', 'Kwork'}:
+        return points, reasons
+    q = norm(text).lower()
+    speech_service = any(s in q for s in (
+        'логопед', 'дефектолог', 'фонопед', 'дислекс',
+        'дисграф', 'коррекция речи', 'звук р', 'звук л'))
+    child = any(s in q for s in (
+        'ребен', 'ребён', 'дочк', 'сын', 'возраст', 'класс', 'зрр', 'зпрр'))
+    adult = any(s in q for s in (
+        'мне ', 'у меня', 'взросл', 'расщелин', 'голос'))
+    need = any(s in q for s in NEED) or any(s in q for s in (
+        'фонопед', 'билингв', 'двуязыч', 'коррекция речи',
+        'шипящие', 'логопедическ', 'расщелин'))
+    if speech_service and (child or adult) and need and points < 60:
+        return 60, reasons + ['подтверждённая карточка клиентского заказа']
+    return points, reasons

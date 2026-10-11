@@ -44,3 +44,14 @@ finally:
     lead_bot.DELIVERY_MAX_AGE_HOURS,lead_bot.MAX_LEADS_PER_RUN=old_age,old_max
 
 print('PENDING_TEST_OK')
+
+# A zero configured delivery limit means no arbitrary per-run cap.
+old_age,old_max=lead_bot.DELIVERY_MAX_AGE_HOURS,lead_bot.MAX_LEADS_PER_RUN
+try:
+    lead_bot.DELIVERY_MAX_AGE_HOURS=72
+    lead_bot.MAX_LEADS_PER_RUN=0
+    batch,queued,stale_count=lead_bot.select_delivery_candidates([fresh,fresh2,stale],now)
+    assert batch==[fresh,fresh2,stale]
+    assert not queued and stale_count==0
+finally:
+    lead_bot.DELIVERY_MAX_AGE_HOURS,lead_bot.MAX_LEADS_PER_RUN=old_age,old_max

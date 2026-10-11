@@ -6,7 +6,7 @@ from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
 from telethon.tl.functions.contacts import SearchRequest
 from telethon.tl.types import User
-from classifier import score
+from classifier import score, score_market_order
 from card import build
 from web_sources import collect_cloud_web
 from market_sources import collect_markets
@@ -15,7 +15,7 @@ from sources import merge_unique, content_signature
 TG_API_ID=int(os.environ.get('TG_API_ID','0'))
 TG_API_HASH=os.environ.get('TG_API_HASH','')
 TG_SESSION=os.environ.get('TG_SESSION','')
-BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN') or os.environ.get('LEADS_BOT_TOKEN','')
+BOT_TOKEN=os.environ.get('LOGOLEAD_BOT_TOKEN','')
 CHAT_ID=os.environ.get('LOGOLEAD_CHAT_ID','')
 
 STATE_VERSION=4
@@ -304,6 +304,8 @@ def select_delivery_candidates(items,now=None):
     cutoff=now-timedelta(hours=DELIVERY_MAX_AGE_HOURS)
     deliverable=[item for item in items if item[1]>=cutoff]
     stale_count=len(items)-len(deliverable)
+    if MAX_LEADS_PER_RUN <= 0:
+        return deliverable,[],stale_count
     return deliverable[:MAX_LEADS_PER_RUN],deliverable[MAX_LEADS_PER_RUN:],stale_count
 
 def author_url_from_source(source):
@@ -413,8 +415,10 @@ async def notify(text,source_url=None,author_url=None,feedback_key=None):
             req=urllib.request.Request(url,data=data)
             try:
                 with urllib.request.urlopen(req,timeout=20) as response:
-                    response.read(2000)
-                    return
+                    result=json.loads(response.read(2000).decode('utf-8','ignore'))
+                    if not result.get('ok') or not (result.get('result') or {}).get('message_id'):
+                        raise RuntimeError('Telegram delivery not confirmed by Bot API')
+                    return result['result']['message_id']
             except urllib.error.HTTPError as exc:
                 last_error=exc
                 if attempt>=BOT_SEND_RETRIES:
@@ -804,7 +808,7 @@ async def main():
             if key in seen:
                 continue
             seen[key]=None
-            value,reasons=score(item['text'])
+            value,reasons=score_market_order(item['text'],item.get('source',''))
             record_score(value,reasons)
             if value<MIN_SCORE:
                 reason=reasons[0] if reasons else f'score<{MIN_SCORE}'

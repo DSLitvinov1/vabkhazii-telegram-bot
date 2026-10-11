@@ -1,6 +1,8 @@
 name: LogoLead
 
 on:
+  schedule:
+    - cron: '17 * * * *'
   push:
     paths:
       - "logolead/**"
@@ -19,7 +21,7 @@ on:
       min_score:
         description: "Minimum lead score"
         required: false
-        default: "50"
+        default: "60"
 
 permissions:
   contents: read
@@ -34,20 +36,19 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Download repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Restore LogoLead state
         if: github.event_name != 'push'
-        uses: actions/cache@v6
+        uses: actions/cache@v4
         with:
           path: logolead/.lead_state
           key: logolead-${{ github.run_id }}
           restore-keys: |
             logolead-
-            vabkhazii-leads-
 
       - name: Install Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
@@ -77,6 +78,15 @@ jobs:
           python test_workflow.py
           python test_target.py
           python test_full.py
+          python test_delivery_preflight.py
+
+      - name: Verify dedicated speech bot and recipient
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.deliver == '1')
+        working-directory: logolead
+        env:
+          LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
+          LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
+        run: python delivery_preflight.py
 
       - name: Run LogoLead
         if: github.event_name != 'push'
@@ -86,13 +96,12 @@ jobs:
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           TG_SESSION: ${{ secrets.TG_SESSION }}
           LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
-          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
-          MIN_SCORE: ${{ inputs.min_score || '50' }}
+          MIN_SCORE: ${{ inputs.min_score || '60' }}
           MAX_AGE_HOURS: "72"
           GLOBAL_ROTATING_QUERIES_PER_RUN: "12"
-          MAX_LEADS_PER_RUN: "1"
-          DELIVERY_MAX_AGE_HOURS: "24"
+          MAX_LEADS_PER_RUN: "0"
+          DELIVERY_MAX_AGE_HOURS: "72"
           PENDING_LIMIT: "500"
           DELIVERY_ENABLED: ${{ github.event_name == 'schedule' && '1' || (inputs.deliver || '0') }}
           ENABLE_FEEDBACK: "0"
@@ -112,7 +121,7 @@ jobs:
           ENABLE_MARKETS: "1"
           ENABLE_KWORK: "1"
           ENABLE_PROFI: "1"
-          MARKET_INTERVAL_MINUTES: "30"
+          MARKET_INTERVAL_MINUTES: "60"
           ENABLE_WEB: "1"
           WEB_INTERVAL_MINUTES: "60"
           SEND_STATUS: "0"
@@ -149,3 +158,13 @@ jobs:
           with urllib.request.urlopen(req,timeout=20) as response:
               print('STATUS_HTTP',response.status)
           PY
+
+      - name: Alert recipient if scheduled search fails
+        if: failure() && github.event_name == 'schedule'
+        continue-on-error: true
+        working-directory: logolead
+        env:
+          LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
+          LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python failure_alert.py

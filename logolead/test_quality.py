@@ -57,3 +57,10 @@ if fail:
     for row in fail: print('QUALITY_FAIL',row)
     raise AssertionError(f'{len(fail)} quality cases failed')
 print('QUALITY_GATE_OK',len(POSITIVE),len(NEGATIVE))
+
+from classifier import score_market_order
+assert score_market_order('Логопед-дефектолог. Возраст ребёнка 2 года. Ребёнок плохо говорит','Profi.ru · Истра')[0]>=60
+assert score_market_order('Логопедический массаж. Возраст ребёнка 5 лет','Profi.ru · Москва')[0]>=60
+assert score_market_order('Фонопед. Мне 19 лет, у меня расщелина нёба','Kwork')[0]>=60
+assert score_market_order('Я логопед. Запись открыта, приглашаю на занятия','Profi.ru · Москва')[0]==0
+assert score_market_order('Логопед-дефектолог. Возраст ребёнка 2 года. Ребёнок плохо говорит','Telegram')[0]<60
