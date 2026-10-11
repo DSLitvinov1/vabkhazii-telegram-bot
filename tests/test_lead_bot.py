@@ -286,6 +286,22 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["lead_type"], "excursion")
 
+    def test_scenic_destination_how_to_get_there_is_excursion(self):
+        result, reason = self.classify(
+            "Подскажите, как добраться до Рицы завтра?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+
+    def test_explicit_taxi_to_scenic_destination_stays_transfer(self):
+        result, reason = self.classify(
+            "Нужно такси из Гагры на Рицу завтра."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+
     def test_local_sightseeing_question_is_kept_as_warm_excursion(self):
         result, reason = self.classify(
             "Подскажите, что посмотреть в Гагре?"
