@@ -1,4 +1,5 @@
 name: VAbkhazii Manual Regression Test
+# rerun-marker: 2
 
 on:
   push:
