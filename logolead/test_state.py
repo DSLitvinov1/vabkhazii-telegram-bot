@@ -73,3 +73,25 @@ state,saved=use_state({
  'pending':[],
 })
 assert saved['sent']==['acknowledged-lead']
+
+# A complete existing state must survive a failed atomic replacement.
+import unittest.mock
+with tempfile.TemporaryDirectory() as folder:
+    d=Path(folder)
+    original_dir,original_file=lead_bot.STATE_DIR,lead_bot.STATE_FILE
+    try:
+        lead_bot.STATE_DIR=d
+        lead_bot.STATE_FILE=d/'state.json'
+        lead_bot.save_state({'sent':['already-sent'],'pending':[]})
+        original=d.joinpath('state.json').read_text(encoding='utf-8')
+        with unittest.mock.patch.object(lead_bot.os,'replace',side_effect=OSError('storage interrupted')):
+            try:
+                lead_bot.save_state({'sent':['should-not-replace'],'pending':[]})
+            except OSError:
+                pass
+            else:
+                raise AssertionError('Storage failure should be exposed')
+        assert d.joinpath('state.json').read_text(encoding='utf-8')==original
+        assert not d.joinpath('state.json.tmp').exists()
+    finally:
+        lead_bot.STATE_DIR,lead_bot.STATE_FILE=original_dir,original_file

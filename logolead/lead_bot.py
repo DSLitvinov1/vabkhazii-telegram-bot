@@ -209,8 +209,16 @@ def load_state():
     return state
 
 def save_state(state):
+    """Atomically update state so interrupted writes cannot truncate it."""
     state['version']=STATE_VERSION
-    STATE_FILE.write_text(json.dumps(state,ensure_ascii=False,indent=2),'utf-8')
+    STATE_DIR.mkdir(parents=True,exist_ok=True)
+    temporary=STATE_FILE.with_name(STATE_FILE.name+'.tmp')
+    try:
+        temporary.write_text(json.dumps(state,ensure_ascii=False,indent=2),'utf-8')
+        os.replace(temporary,STATE_FILE)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 def select_search_queries(state):
     core=[]
