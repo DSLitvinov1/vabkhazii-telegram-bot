@@ -1,0 +1,4 @@
+TIMEOUT
+Одноразовый QR не был подтверждён вовремя
+tests=skipped
+bot=skipped
