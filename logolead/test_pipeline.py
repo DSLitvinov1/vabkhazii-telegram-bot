@@ -90,3 +90,37 @@ state={}
 sample=[lead_bot.choose_backfill_groups(backfill,state,3) for _ in range(3)]
 assert len({name for batch in sample for name,_ in batch})==7
 assert lead_bot.choose_backfill_groups(backfill,state,0)==[]
+
+from types import SimpleNamespace
+import asyncio
+
+
+class FakeDialog:
+    def __init__(self, name, username=None, broadcast=False):
+        self.name=name
+        self.entity=SimpleNamespace(username=username,broadcast=broadcast)
+
+
+class FakeClient:
+    def __init__(self,dialogs):
+        self.dialogs=dialogs
+    async def iter_dialogs(self,limit=None):
+        for dialog in self.dialogs[:limit]:
+            yield dialog
+
+
+golden_dialogs=[
+    FakeDialog('Русскоязычный Таиланд', 'test_thai_parents'),
+    FakeDialog('Родители Паттайя', 'test_pattaya_parents'),
+    FakeDialog('Логопедические услуги - реклама', 'ad_logoped'),
+    FakeDialog('Русскоязычный Таиланд приватная группа', None),
+    FakeDialog('Мамы чат — объявления канала', 'moms_channel', True),
+    FakeDialog('Автозапчасти Владивосток', 'parts_channel'),
+]
+discovered=asyncio.run(lead_bot.discover_joined_public_groups(FakeClient(golden_dialogs)))
+assert 'test_thai_parents' in discovered
+assert 'test_pattaya_parents' in discovered
+assert 'ad_logoped' not in discovered
+assert 'moms_channel' not in discovered
+assert 'parts_channel' not in discovered
+assert len(discovered)==2

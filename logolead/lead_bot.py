@@ -122,6 +122,8 @@ PUBLIC_GROUP_SEEDS = (
     'chat_thailand', 'thailand_russia_ru', 'russian_thailand',
     'pattayadeti', 'thailand_chat_russ', 'russiansin_thailand',
     'pattayachat', 'forum_thailand',
+    'phuket_parents_bg', 'phuket_deti', 'pattaya_women_bg',
+    'phuket_women_bg', 'bangkokwoman',
 )
 
 FAMILY_GROUP_MARKERS = ('родител', 'мам', 'дети', 'детск', 'семейн', 'family', 'kids')
@@ -513,6 +515,43 @@ async def notify(text,source_url=None,author_url=None,feedback_key=None):
 
     await asyncio.to_thread(send)
 
+JOINED_SOURCE_MARKERS = (
+    'мам', 'родител', 'дети', 'детск', 'семейн', 'логопед',
+    'дефектолог', 'развити', 'пхукет', 'паттая', 'пхатай',
+    'таиланд', 'тайланд', 'пхукет', 'пхукет',
+)
+
+
+def is_relevant_joined_chat(title):
+    lowered=(title or '').strip().lower()
+    return any(word in lowered for word in JOINED_SOURCE_MARKERS)
+
+
+async def discover_joined_public_groups(client, max_dialogs=None):
+    """Include on-account, public family groups missing from global SearchRequest.
+
+    Only publicly linked, non-broadcast groups; no private chat contents or
+    dialog metadata are logged or forwarded.
+    """
+    found={}
+    inspected=0
+    async for dialog in client.iter_dialogs(limit=max_dialogs):
+        inspected+=1
+        entity=dialog.entity
+        title=(getattr(dialog,'name','') or '').strip()
+        if not is_relevant_joined_chat(title):
+            continue
+        if not chat_allowed(entity):
+            continue
+        if any(marker in title.lower() for marker in COMMERCIAL_CHAT_MARKERS):
+            continue
+        username=getattr(entity,'username',None)
+        if username:
+            found[username]=title
+    print('MEMBER_GROUP_DISCOVERY',inspected,len(found))
+    return found
+
+
 async def discover_public_groups(client,state,now):
     cached=state.get('groups') or {}
     due=FORCE_RUN or not cached or not state.get('last_discovery')
@@ -527,6 +566,16 @@ async def discover_public_groups(client,state,now):
 
     keep=max(0,GROUP_CACHE_LIMIT-40)
     groups=dict(list(cached.items())[:keep])
+    # SearchRequest only indexes public groups matching discovery terms. The
+    # authorised account may already belong to relevant public parent chats
+    # which cannot be discovered that way, even though it can read them.
+    joined=await discover_joined_public_groups(client)
+    for username,title in joined.items():
+        if username in groups:
+            continue
+        groups[username]=title
+        if len(groups)>=GROUP_CACHE_LIMIT:
+            break
     discovery_queries=select_discovery_queries(state)
     print('DISCOVERY_QUERY_SET',len(discovery_queries),'OF',len(DISCOVERY_QUERIES),'CURSOR',state.get('discovery_query_cursor',0))
     for query in discovery_queries:
