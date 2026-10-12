@@ -17,6 +17,7 @@ API_HASH = os.environ["TG_API_HASH"].strip()
 BOT_TOKEN = os.environ["LEADS_BOT_TOKEN"].strip()
 CHAT_ID = os.environ["LEADS_CHAT_ID"].strip()
 TWOFA_PASSWORD = os.environ.get("TG_2FA_PASSWORD", "").strip()
+SINGLE_QR = os.environ.get("SINGLE_QR", "").strip().lower() in {"1", "true", "yes", "on"}
 
 OUT_DIR = Path(".tg_session_cache")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -121,6 +122,13 @@ async def main():
                 await client.sign_in(password=TWOFA_PASSWORD)
                 break
             except (asyncio.TimeoutError, AuthTokenExpiredError):
+                if SINGLE_QR:
+                    write_status("TIMEOUT", "Одноразовый QR не был подтверждён вовремя")
+                    send_text(
+                        "VAbkhazii Leads: одноразовый QR не был подтверждён вовремя. "
+                        "Новых QR автоматически не отправляю."
+                    )
+                    return
                 if asyncio.get_running_loop().time() >= deadline:
                     write_status("TIMEOUT", "QR не был подтверждён за 7 минут")
                     send_text(
