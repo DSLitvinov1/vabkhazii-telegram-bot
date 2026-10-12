@@ -31,7 +31,7 @@ CUTOFF_HOURS = 72
 
 def is_target_group(title):
     title = (title or "").casefold().replace("й", "и").replace("ё", "е")
-    return "таиланд" in title or "таиланд" in title or "таиланд" in title
+    return ("таиланд" in title or "тайланд" in title) and ("русск" in title or "таиланд" in title or "тайланд" in title)
 
 
 async def main():
