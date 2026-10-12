@@ -1,10 +1,10 @@
-name: Renew Telegram Session
+name: Renew LogoLead Telegram Session
 
 on:
   workflow_dispatch:
     inputs:
       encryption_public_key:
-        description: "One-time public key"
+        description: "One-time public encryption key held by session owner"
         required: true
 
 jobs:
@@ -12,11 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     concurrency:
-      group: telegram-user-session
+      group: logolead-account-authorization
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install dependencies
@@ -25,8 +25,8 @@ jobs:
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
-          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
-          LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
-          TG_2FA_PASSWORD: ${{ secrets.TG_2FA_PASSWORD }}
+          LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}
+          LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}
+          LOGOLEAD_TG_2FA_PASSWORD: ${{ secrets.LOGOLEAD_TG_2FA_PASSWORD }}
           ENCRYPTION_PUBLIC_KEY: ${{ inputs.encryption_public_key }}
         run: python logolead/renew_session.py
