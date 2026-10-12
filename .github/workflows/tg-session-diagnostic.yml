@@ -1,0 +1,66 @@
+name: TG Session Diagnostic
+
+on:
+  push:
+    paths:
+      - ".github/workflows/tg-session-diagnostic.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet telethon
+      - name: Diagnose session
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import asyncio, os
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+          import lead_bot
+
+          async def main():
+              os.makedirs(".ci-status", exist_ok=True)
+              status = "UNKNOWN"
+              detail = ""
+              if not lead_bot.TG_SESSION:
+                  status = "MALFORMED"
+                  detail = str(lead_bot.TG_SESSION_CONFIG_ERROR or "")
+              else:
+                  client = TelegramClient(StringSession(lead_bot.TG_SESSION), lead_bot.TG_API_ID, lead_bot.TG_API_HASH)
+                  try:
+                      await client.connect()
+                      ok = await client.is_user_authorized()
+                      status = "AUTHORIZED" if ok else "UNAUTHORIZED"
+                  except Exception as exc:
+                      status = "CONNECT_ERROR"
+                      detail = type(exc).__name__
+                  finally:
+                      try:
+                          await client.disconnect()
+                      except Exception:
+                          pass
+              with open(".ci-status/tg-session.txt","w",encoding="utf-8") as f:
+                  f.write(status + "\n" + detail[:300] + "\n")
+          asyncio.run(main())
+          PY
+      - name: Record result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ci-status/tg-session.txt
+          git commit -m "Record TG session diagnostic" || exit 0
+          git push
