@@ -4,7 +4,7 @@ from pathlib import Path
 import qrcode
 import requests
 from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
+from telethon.errors import AuthTokenExpiredError, SessionPasswordNeededError
 from telethon.sessions import StringSession
 
 from tg_session_cache import encrypt_session
@@ -84,36 +84,51 @@ async def main():
     try:
         await client.connect()
         qr = await client.qr_login()
-        qrcode.make(qr.url).save(qr_path)
+        deadline = asyncio.get_running_loop().time() + 420
+        first_qr = True
 
-        result = send_qr(qr_path)
-        qr_message_id = result.get("message_id")
-        send_text(
-            "VAbkhazii Leads ждёт подтверждения входа. "
-            "Откройте QR на компьютере и отсканируйте его телефоном."
-        )
+        while True:
+            qrcode.make(qr.url).save(qr_path)
 
-        try:
-            await asyncio.wait_for(qr.wait(), timeout=300)
-        except SessionPasswordNeededError:
-            if not TWOFA_PASSWORD:
-                write_status(
-                    "NEEDS_2FA",
-                    "Telegram требует пароль двухэтапной аутентификации",
-                )
+            if qr_message_id:
+                delete_message(qr_message_id)
+                qr_message_id = None
+
+            result = send_qr(qr_path)
+            qr_message_id = result.get("message_id")
+
+            if first_qr:
                 send_text(
-                    "VAbkhazii Leads: Telegram запросил облачный пароль 2FA. "
-                    "Сессию пока не меняю."
+                    "VAbkhazii Leads ждёт подтверждения входа. "
+                    "Откройте QR на компьютере и отсканируйте его телефоном."
                 )
-                return
-            await client.sign_in(password=TWOFA_PASSWORD)
-        except asyncio.TimeoutError:
-            write_status("TIMEOUT", "QR не был подтверждён за 5 минут")
-            send_text(
-                "VAbkhazii Leads: QR не был подтверждён вовремя. "
-                "Рабочая конфигурация не изменена."
-            )
-            return
+                first_qr = False
+
+            try:
+                await asyncio.wait_for(qr.wait(), timeout=45)
+                break
+            except SessionPasswordNeededError:
+                if not TWOFA_PASSWORD:
+                    write_status(
+                        "NEEDS_2FA",
+                        "Telegram требует пароль двухэтапной аутентификации",
+                    )
+                    send_text(
+                        "VAbkhazii Leads: Telegram запросил облачный пароль 2FA. "
+                        "Сессию пока не меняю."
+                    )
+                    return
+                await client.sign_in(password=TWOFA_PASSWORD)
+                break
+            except (asyncio.TimeoutError, AuthTokenExpiredError):
+                if asyncio.get_running_loop().time() >= deadline:
+                    write_status("TIMEOUT", "QR не был подтверждён за 7 минут")
+                    send_text(
+                        "VAbkhazii Leads: QR не был подтверждён вовремя. "
+                        "Рабочая конфигурация не изменена."
+                    )
+                    return
+                await qr.recreate()
 
         if not await client.is_user_authorized():
             write_status("UNAUTHORIZED", "Telegram не подтвердил авторизацию")
