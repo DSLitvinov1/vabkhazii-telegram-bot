@@ -1,4 +1,4 @@
-NEEDS_2FA
-Telegram требует пароль двухэтапной аутентификации
+TIMEOUT
+Одноразовый QR не был подтверждён вовремя
 tests=skipped
 bot=skipped
