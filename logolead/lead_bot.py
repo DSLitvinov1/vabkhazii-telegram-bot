@@ -114,6 +114,7 @@ DEEP_GROUP_QUERIES=['логопед','дефектолог','нейролого�
 COMMERCIAL_CHAT_MARKERS=[
     'услуги логопеда','логопедический центр','школа логопеда',
     'курсы логопедов','вакансии логопед','обучение логопедов',
+    'логопедические услуги','логопедические занятия',
 ]
 
 # Only read publicly addressable groups. Never join them or send messages.
