@@ -9,7 +9,8 @@ assert 'name: LogoLead' in logo
 assert 'push:' in logo and 'workflow_dispatch:' in logo
 assert "cron: '17 * * * *'" in logo
 assert 'actions/checkout@v4' in logo
-assert 'actions/cache@v4' in logo
+assert 'actions/cache/restore@v4' in logo
+assert 'actions/cache/save@v4' in logo
 assert 'actions/setup-python@v5' in logo
 assert 'cache: "pip"' in logo
 assert 'cache-dependency-path: "logolead/requirements.txt"' in logo
