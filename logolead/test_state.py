@@ -95,3 +95,20 @@ with tempfile.TemporaryDirectory() as folder:
         assert not d.joinpath('state.json.tmp').exists()
     finally:
         lead_bot.STATE_DIR,lead_bot.STATE_FILE=original_dir,original_file
+
+# Corruption must not silently clear sent keys and redeliver everything.
+with tempfile.TemporaryDirectory() as folder:
+    d=Path(folder)
+    old_dir,old_file=lead_bot.STATE_DIR,lead_bot.STATE_FILE
+    try:
+        lead_bot.STATE_DIR=d
+        lead_bot.STATE_FILE=d/'state.json'
+        lead_bot.STATE_FILE.write_text('{"sent": ["already-sent"],',encoding='utf-8')
+        try:
+            lead_bot.load_state()
+        except RuntimeError as exc:
+            assert 'refusing to reset' in str(exc)
+        else:
+            raise AssertionError('Corrupt state was silently forgotten')
+    finally:
+        lead_bot.STATE_DIR,lead_bot.STATE_FILE=old_dir,old_file

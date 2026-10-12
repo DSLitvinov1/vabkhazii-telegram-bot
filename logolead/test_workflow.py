@@ -84,3 +84,7 @@ assert 'BACKFILL_SCAN_LIMIT: "240"' in logo
 
 assert 'secrets.LOGOLEAD_TG_SESSION' in logo
 assert 'secrets.TG_SESSION' not in logo
+
+assert 'actions/cache/restore@v4' in logo
+assert 'actions/cache/save@v4' in logo
+assert 'logolead-dedicated-v2-' in logo

@@ -184,8 +184,10 @@ def load_state():
     try:
         state=json.loads(STATE_FILE.read_text('utf-8'))
         if not isinstance(state,dict): raise ValueError('bad state')
-    except Exception:
+    except FileNotFoundError:
         state={}
+    except (ValueError,TypeError,UnicodeError,OSError) as exc:
+        raise RuntimeError('LogoLead state unreadable: refusing to reset delivery history') from exc
     state.setdefault('seen',[])
     state.setdefault('sent',[])
     state.setdefault('pending',[])
@@ -1019,6 +1021,12 @@ async def main():
     remaining=[]
     if DELIVERY_ENABLED:
         batch,queued_after_batch,stale_count=select_delivery_candidates(found)
+        # Preserve every pending lead before sending any message, including
+        # after an unexpected failure in the middle of a delivery batch.
+        state['pending']=[candidate_to_pending(item) for item in found[:PENDING_LIMIT]]
+        state['sent']=list(sent_keys.keys())[-10000:]
+        state['seen']=list(seen.keys())[-20000:]
+        save_state(state)
         if stale_count:
             print('STALE_PENDING_DROPPED',stale_count)
         remaining.extend(queued_after_batch)
@@ -1028,9 +1036,13 @@ async def main():
                 fid=feedback_id(sent_key) if ENABLE_FEEDBACK else None
                 await notify(card,url,author_url_from_source(source),fid)
                 sent_keys[sent_key]=None
-                # Persist acknowledgement immediately: a later failure must not
-                # cause successful Telegram messages to be delivered again.
+                # Remove the acknowledged delivery from the persisted queue
+                # at the same checkpoint as recording its deduplication key.
+                # A crash before this checkpoint is still an ambiguous Telegram
+                # outcome and cannot be perfectly deduplicated by sendMessage.
                 state['sent']=list(sent_keys.keys())[-10000:]
+                state['pending']=[item for item in state['pending']
+                                  if delivery_key(item.get('url',''),item.get('text','')) != sent_key]
                 save_state(state)
                 if fid:
                     index=state.get('feedback_index') or {}

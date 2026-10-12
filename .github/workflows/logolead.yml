@@ -40,12 +40,12 @@ jobs:
 
       - name: Restore LogoLead state
         if: github.event_name != 'push' || contains(github.event.head_commit.message, '[logolead-live-check]') || contains(github.event.head_commit.message, '[logolead-production-scan]')
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: logolead/.lead_state
-          key: logolead-${{ github.run_id }}
+          key: logolead-dedicated-v2-${{ github.run_id }}
           restore-keys: |
-            logolead-
+            logolead-dedicated-v2-
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -189,6 +189,13 @@ jobs:
           BOT_RETRY_MAX_SECONDS: "30"
           DISPLAY_TZ_OFFSET: "3"
         run: python lead_bot.py
+
+      - name: Persist LogoLead state even after partial scan failure
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[logolead-production-scan]'))
+        uses: actions/cache/save@v4
+        with:
+          path: logolead/.lead_state
+          key: logolead-dedicated-v2-${{ github.run_id }}
 
       - name: Publish LogoLead status
         if: always()
