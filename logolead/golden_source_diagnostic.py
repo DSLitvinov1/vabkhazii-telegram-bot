@@ -49,6 +49,8 @@ async def main():
             "lookback_hours": CUTOFF_HOURS,
             "joined_dialogs_checked": 0,
             "target_named_dialogs_found": 0,
+            "joined_dialogs_complete": False,
+            "exact_titled_target_dialogs": 0,
             "public_target_dialogs": [],
             "global_phrase_matches": 0,
             "global_qualified_public_matches": [],
@@ -56,15 +58,18 @@ async def main():
         }
         # A screenshot does not establish which Telegram account sees that chat.
         # Distinguish absent membership from a broken classifier.
-        async for dialog in client.iter_dialogs(limit=220):
+        async for dialog in client.iter_dialogs(limit=None):
             result["joined_dialogs_checked"]+=1
             entity=dialog.entity
             title=getattr(dialog,"name","") or ""
+            if "русскоязычный таиланд" in title.casefold().replace("й","и"):
+                result["exact_titled_target_dialogs"]+=1
             if is_target_group(title) and not getattr(entity,"broadcast",False):
                 result["target_named_dialogs_found"]+=1
                 public_user=getattr(entity,"username",None)
                 if public_user:
                     result["public_target_dialogs"].append("@"+public_user)
+        result["joined_dialogs_complete"]=True
         for query in TARGET_GROUP_NAMES:
             try:
                 found=await client(SearchRequest(q=query,limit=40))
