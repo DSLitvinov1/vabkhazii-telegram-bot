@@ -64,3 +64,12 @@ assert state['seen'] == []
 assert state['group_last_ids'] == {}
 assert state['group_backfill_ids'] == {'parents':400}
 assert state['sent'] == ['already-delivered']
+
+# Persisted deliveries are never forgotten across subsequent state reloads.
+state,saved=use_state({
+ 'version':lead_bot.STATE_VERSION,
+ 'classifier_version':lead_bot.CLASSIFIER_VERSION,
+ 'seen':[], 'sent':['acknowledged-lead'],
+ 'pending':[],
+})
+assert saved['sent']==['acknowledged-lead']

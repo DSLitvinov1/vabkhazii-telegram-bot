@@ -55,3 +55,18 @@ try:
     assert not queued and stale_count==0
 finally:
     lead_bot.DELIVERY_MAX_AGE_HOURS,lead_bot.MAX_LEADS_PER_RUN=old_age,old_max
+
+# Marketplace orders must retain the original source-specific classifier
+# when queued after an unsuccessful Telegram delivery.
+from datetime import datetime,timezone,timedelta
+cutoff=datetime.now(timezone.utc)-timedelta(hours=72)
+from classifier import score,score_market_order
+market_text='Логопедический массаж. Возраст ребёнка: 4 года'
+assert score(market_text)[0]<60
+assert score_market_order(market_text,'Profi.ru · Балашиха')[0]>=60
+queued={'source':'Profi.ru · Балашиха','text':market_text,
+        'published':datetime.now(timezone.utc).isoformat(),
+        'url':'https://profi.ru/orders/example'}
+record=lead_bot.pending_to_candidate(queued,cutoff,{})
+assert record is not None and record[0]>=60,record
+assert lead_bot.pending_to_candidate(queued,cutoff,{record[7]:None}) is None

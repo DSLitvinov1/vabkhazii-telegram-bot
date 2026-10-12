@@ -340,7 +340,10 @@ def pending_to_candidate(item,cutoff,sent_keys):
             return None
         text=item.get('text') or ''
         url=item.get('url') or ''
-        value,reasons=score(text)
+        if source.startswith(('Profi.ru', 'Kwork')):
+            value,reasons=score_market_order(text,source)
+        else:
+            value,reasons=score(text)
         if value<MIN_SCORE:
             return None
         sent_key=delivery_key(url,text)
@@ -1017,6 +1020,10 @@ async def main():
                 fid=feedback_id(sent_key) if ENABLE_FEEDBACK else None
                 await notify(card,url,author_url_from_source(source),fid)
                 sent_keys[sent_key]=None
+                # Persist acknowledgement immediately: a later failure must not
+                # cause successful Telegram messages to be delivered again.
+                state['sent']=list(sent_keys.keys())[-10000:]
+                save_state(state)
                 if fid:
                     index=state.get('feedback_index') or {}
                     index[fid]={
