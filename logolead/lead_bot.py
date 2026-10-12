@@ -629,6 +629,14 @@ async def discover_public_groups(client,state,now):
     print('DISCOVERED_GROUPS',len(state.get('groups') or {}))
     return state.get('groups') or {}
 
+def require_logoped_owner(account):
+    """Never scan somebody else's Telegram account for LogoLead."""
+    identity=(getattr(account,'username',None) or '').strip().lstrip('@').casefold()
+    if getattr(account,'bot',False) or identity!='logopedutkina':
+        raise RuntimeError('LogoLead requires authorized @logopedutkina Telegram account')
+    return True
+
+
 def validate_config():
     if not (TG_API_ID and TG_API_HASH and TG_SESSION):
         raise RuntimeError('Missing Telegram user credentials')
@@ -671,7 +679,9 @@ async def main():
     client=TelegramClient(StringSession(TG_SESSION),TG_API_ID,TG_API_HASH)
     await client.connect()
     if not await client.is_user_authorized():
-        raise RuntimeError('TG_SESSION not authorized')
+        raise RuntimeError('Dedicated LogoLead Telegram session not authorized')
+    account=await client.get_me()
+    require_logoped_owner(account)
 
     cutoff=now-timedelta(hours=MAX_AGE_HOURS)
     restored_pending=[]

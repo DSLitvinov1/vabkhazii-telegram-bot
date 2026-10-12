@@ -34,3 +34,16 @@ finally:
         setattr(lead_bot,key,value)
 
 print('CONFIG_TEST_OK')
+
+from types import SimpleNamespace
+assert lead_bot.require_logoped_owner(SimpleNamespace(username='logopedutkina',bot=False))
+assert lead_bot.require_logoped_owner(SimpleNamespace(username='@LogopedUtkina',bot=False))
+for bad in (SimpleNamespace(username='some_other_account',bot=False),
+            SimpleNamespace(username=None,bot=False),
+            SimpleNamespace(username='logopedutkina',bot=True)):
+    try:
+        lead_bot.require_logoped_owner(bad)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError('Wrong Telegram account must not be scanned')

@@ -81,3 +81,6 @@ assert 'logolead-production-scan' in logo
 
 assert 'BACKFILL_GROUPS_PER_RUN: "6"' in logo
 assert 'BACKFILL_SCAN_LIMIT: "240"' in logo
+
+assert 'secrets.LOGOLEAD_TG_SESSION' in logo
+assert 'secrets.TG_SESSION' not in logo
