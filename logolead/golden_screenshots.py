@@ -10,7 +10,8 @@ GOLDEN_TELEGRAM = [
         "id": "telegram-ekaterina-20261010",
         "source": "Telegram",
         "date_label": "2026-10-10",
-        "group_label": "Русскоязычный Таиланд",
+        "group_label": None,  # Actual chat title/URL is not visible in screenshot.
+        "visible_ad_banner": "Русскоязычный Таиланд",
         "text": "Здравствуйте. Ищу логопеда для дочери 7 лет. Отсутствует звук Р",
         "expected": "direct_client_request",
         "verified_source_url": None,

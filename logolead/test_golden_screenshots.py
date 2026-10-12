@@ -24,3 +24,6 @@ print("GOLDEN_SCREENSHOTS_OK",
       "telegram", len(GOLDEN_TELEGRAM),
       "profi", len(GOLDEN_PROFI),
       "negative", len(NEGATIVE_CASES))
+
+assert GOLDEN_TELEGRAM[0]['group_label'] is None
+assert GOLDEN_TELEGRAM[0]['visible_ad_banner']=='Русскоязычный Таиланд'
