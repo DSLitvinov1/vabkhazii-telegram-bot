@@ -96,6 +96,15 @@ jobs:
           TG_SESSION: ${{ secrets.TG_SESSION }}
         run: python group_match_audit.py
 
+      - name: Diagnose screenshot source access in Telegram
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[golden-diagnostic]')
+        working-directory: logolead
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+        run: python golden_source_diagnostic.py
+
       - name: Test LogoLead
         if: github.event_name != 'schedule'
         working-directory: logolead
@@ -120,6 +129,7 @@ jobs:
           python test_delivery_preflight.py
           python test_session_compat.py
           python test_send_live_test.py
+          python test_golden_screenshots.py
 
       - name: Verify dedicated speech bot and recipient
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.deliver == '1') || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[logolead-live-check]') || contains(github.event.head_commit.message, '[logolead-production-scan]')))
