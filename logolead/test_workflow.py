@@ -57,9 +57,12 @@ assert 'group: telegram-user-session' in target
 
 assert 'workflow_dispatch:' in renew
 assert 'schedule:' not in renew
-assert 'TG_2FA_PASSWORD: ${{ secrets.TG_2FA_PASSWORD }}' in renew
+assert 'LOGOLEAD_TG_2FA_PASSWORD: ${{ secrets.LOGOLEAD_TG_2FA_PASSWORD }}' in renew
+assert 'LOGOLEAD_BOT_TOKEN: ${{ secrets.LOGOLEAD_BOT_TOKEN }}' in renew
+assert 'LOGOLEAD_CHAT_ID: ${{ secrets.LOGOLEAD_CHAT_ID }}' in renew
+assert 'LEADS_BOT_TOKEN' not in renew and 'LEADS_CHAT_ID' not in renew
 assert 'python logolead/renew_session.py' in renew
-assert 'group: telegram-user-session' in renew
+assert 'group: logolead-account-authorization' in renew
 
 print('WORKFLOW_TEST_OK')
 
@@ -89,3 +92,9 @@ assert 'secrets.TG_SESSION' not in logo
 assert 'actions/cache/restore@v4' in logo
 assert 'actions/cache/save@v4' in logo
 assert 'logolead-dedicated-v2-' in logo
+
+source=Path('renew_session.py').read_text(encoding='utf-8')
+assert "username!='logopedutkina'" in source
+assert 'SESSION_OWNER_REJECTED=1' in source
+assert 'LEADS_BOT_TOKEN' not in source
+assert 'LEADS_CHAT_ID' not in source
