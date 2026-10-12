@@ -124,3 +124,8 @@ assert 'ad_logoped' not in discovered
 assert 'moms_channel' not in discovered
 assert 'parts_channel' not in discovered
 assert len(discovered)==2
+
+# Golden screenshot group title must enter account-joined public source discovery.
+assert lead_bot.is_relevant_joined_chat('Русскоязычный Таиланд')
+assert lead_bot.is_relevant_joined_chat('Русскоязычный Тайланд')
+assert not lead_bot.is_relevant_joined_chat('Продажа шин и дисков')
