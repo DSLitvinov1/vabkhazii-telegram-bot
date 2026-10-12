@@ -54,3 +54,8 @@ assert market_sources.parse_profi_page(
     'https://profi.ru/x','Москва',72,now)==[]
 
 print('MARKET_TEST_OK')
+
+# A public Profi page without the individualized orders section cannot be
+# interpreted as "no actual customer demand".
+from market_sources import visible_text
+assert 'Актуальные заказы от клиентов' not in visible_text('<html><h1>Логопеды</h1><p>Подайте заявку</p></html>')

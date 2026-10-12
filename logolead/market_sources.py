@@ -191,18 +191,27 @@ def parse_profi_page(page,page_url,region,max_age_hours=72,now=None):
 
 def collect_profi(max_age_hours=72):
     merged={}
+    public_pages_readable=0
+    individual_order_sections=0
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures={pool.submit(fetch_text,url): (region,url) for region,url in PROFI_PAGES}
         for future in as_completed(futures):
             region,url=futures[future]
             try:
                 page=future.result()
+                public_pages_readable+=1
+                if 'Актуальные заказы от клиентов' in visible_text(page):
+                    individual_order_sections+=1
                 rows=parse_profi_page(page,url,region,max_age_hours=max_age_hours)
             except Exception as exc:
                 print('PROFI_WARN',region,type(exc).__name__)
                 continue
             for item in rows:
                 merged[item['url']]=item
+    if not individual_order_sections:
+        print('PROFI_ORDER_SOURCE_UNAVAILABLE',
+              'public_pages_checked',public_pages_readable,
+              'personalized_order_feed_not_authenticated')
     return list(merged.values())
 
 def collect_markets(max_age_hours=72):
