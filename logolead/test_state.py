@@ -112,3 +112,45 @@ with tempfile.TemporaryDirectory() as folder:
             raise AssertionError('Corrupt state was silently forgotten')
     finally:
         lead_bot.STATE_DIR,lead_bot.STATE_FILE=old_dir,old_file
+
+# Simulate an interrupted delivery batch. A confirmed first delivery is
+# checkpointed while a second unconfirmed lead remains queued for retry.
+with tempfile.TemporaryDirectory() as folder:
+    root=Path(folder)
+    original=(lead_bot.STATE_DIR,lead_bot.STATE_FILE)
+    try:
+        lead_bot.STATE_DIR=root
+        lead_bot.STATE_FILE=root/'state.json'
+        now=datetime.now(timezone.utc)
+        pending_a={
+            'text':'Ищу логопеда для дочери 7 лет. Отсутствует звук Р',
+            'url':'https://t.me/example/111',
+            'published':now.isoformat(),
+            'source':'Telegram: parents',
+        }
+        pending_b={
+            'text':'Ищу логопеда ребенку 5 лет, не говорит',
+            'url':'https://t.me/example/222',
+            'published':now.isoformat(),
+            'source':'Telegram: parents',
+        }
+        k1=lead_bot.delivery_key(pending_a['url'],pending_a['text'])
+        k2=lead_bot.delivery_key(pending_b['url'],pending_b['text'])
+        lead_bot.save_state({'classifier_version':lead_bot.CLASSIFIER_VERSION,
+                             'pending':[pending_a,pending_b],'sent':[]})
+        state=lead_bot.load_state()
+        state['sent']=[k1]
+        state['pending']=[pending_b]
+        lead_bot.save_state(state)
+        recovered=lead_bot.load_state()
+        cutoff=now-timedelta(hours=72)
+        assert recovered['sent']==[k1]
+        assert lead_bot.pending_to_candidate(pending_a,cutoff,{k1:None}) is None
+        retried=lead_bot.pending_to_candidate(pending_b,cutoff,{k1:None})
+        assert retried is not None and retried[7]==k2
+        # An independent hourly run must see the same recovery snapshot.
+        assert lead_bot.load_state()['pending']==[pending_b]
+    finally:
+        lead_bot.STATE_DIR,lead_bot.STATE_FILE=original
+
+print('RECOVERY_AND_DEDUP_REGRESSION_OK')
