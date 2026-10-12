@@ -7,10 +7,10 @@ from telethon.sessions import StringSession
 
 API_ID=int(os.environ['TG_API_ID'])
 API_HASH=os.environ['TG_API_HASH']
-BOT_TOKEN=os.environ['LEADS_BOT_TOKEN']
-CHAT_ID=os.environ['LEADS_CHAT_ID']
+BOT_TOKEN=os.environ['LOGOLEAD_BOT_TOKEN']
+CHAT_ID=os.environ['LOGOLEAD_CHAT_ID']
 PUBLIC_KEY=os.environ['ENCRYPTION_PUBLIC_KEY']
-TWOFA_PASSWORD=os.environ.get('TG_2FA_PASSWORD','')
+TWOFA_PASSWORD=os.environ.get('LOGOLEAD_TG_2FA_PASSWORD','')
 
 def send_text(text):
     requests.post(
@@ -77,15 +77,22 @@ async def main():
                 if not TWOFA_PASSWORD:
                     delete_message(qr_message_id)
                     print('SESSION_RENEW_2FA_REQUIRED=1',flush=True)
-                    send_text('LogoLead: QR подтверждён, но включён облачный пароль Telegram 2FA. Добавьте его как временный GitHub Secret TG_2FA_PASSWORD и повторите обновление. Пароль в чат не отправляйте.')
+                    send_text('LogoLead: QR подтверждён, но включён облачный пароль Telegram 2FA. Добавьте его как временный GitHub Secret LOGOLEAD_TG_2FA_PASSWORD и повторите обновление. Пароль в чат не отправляйте.')
                     return
                 await client.sign_in(password=TWOFA_PASSWORD)
                 break
         delete_message(qr_message_id)
+        me=await client.get_me()
+        username=(getattr(me,'username',None) or '').strip().lstrip('@').casefold()
+        if getattr(me,'bot',False) or username!='logopedutkina':
+            print('SESSION_OWNER_REJECTED=1',flush=True)
+            send_text('LogoLead: вход отклонён: подтверждён не аккаунт @logopedutkina. Эта сессия не сохранена.')
+            return
         session=client.session.save()
+        # Only the encrypted payload can enter logs; key stays on user's device.
         print('SESSION_RENEW_OK=1',flush=True)
         print('ENCRYPTED_SESSION='+encrypt_session(session),flush=True)
-        send_text('LogoLead: новый Telegram-вход подтверждён. Система завершает безопасное обновление сессии.')
+        send_text('LogoLead: вход аккаунта @logopedutkina подтверждён. Передайте только зашифрованную сессию владельцу ключа для установки в GitHub Secret.')
     finally:
         await client.disconnect()
 
