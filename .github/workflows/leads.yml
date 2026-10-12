@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: vabkhazii-leads-production
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  group: vabkhazii-telegram-user-session
+  cancel-in-progress: false
 
 jobs:
   leads:
@@ -33,6 +33,14 @@ jobs:
             vabkhazii-travel-leads-
             vabkhazii-leads-
 
+      - name: Restore encrypted Telegram session
+        uses: actions/cache/restore@v4
+        with:
+          path: .tg_session_cache
+          key: vabkhazii-tg-session-${{ github.run_id }}
+          restore-keys: |
+            vabkhazii-tg-session-
+
       - name: Install Python
         uses: actions/setup-python@v5
         with:
@@ -41,13 +49,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install telethon
+          python -m pip install telethon pynacl
 
       - name: Validate required secrets
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
         run: |
@@ -58,7 +65,6 @@ jobs:
           names = [
               "TG_API_ID",
               "TG_API_HASH",
-              "TG_SESSION",
               "LEADS_BOT_TOKEN",
               "LEADS_CHAT_ID",
           ]
@@ -67,15 +73,20 @@ jobs:
               print("Missing secrets:", ", ".join(missing))
               sys.exit(1)
 
-          api_id = os.environ["TG_API_ID"].strip()
-          if not api_id.isdigit():
+          if not os.environ["TG_API_ID"].strip().isdigit():
               print("TG_API_ID must contain digits only")
               sys.exit(1)
 
-          print("Required secrets are present")
+          print("Required non-session secrets are present")
           print("TG_API_ID format OK")
-          print("TG_SESSION length:", len(os.environ["TG_SESSION"].strip()))
           PY
+
+      - name: Resolve Telegram user session
+        env:
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          TG_SESSION_FALLBACK: ${{ secrets.TG_SESSION }}
+        run: python resolve_tg_session.py
 
       - name: Check VAbkhazii lead bot syntax
         run: python -m py_compile lead_bot.py
@@ -90,7 +101,6 @@ jobs:
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
-          TG_SESSION: ${{ secrets.TG_SESSION }}
           LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
@@ -111,12 +121,8 @@ jobs:
             exit 0
           fi
 
-          # Scheduled runs happen every 15 minutes. Notify at most once per hour
-          # to avoid flooding the owner during a persistent outage.
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(date -u +%M)" != "07" ]; then
-            echo "Repeated scheduled failure alert suppressed"
-            exit 0
-          fi
+          # Production runs happen once per hour, so one alert per failed run
+          # is already the maximum notification rate.
           MESSAGE="⚠️ VAbkhazii Leads Bot остановился с ошибкой.
           Запуск: #$RUN_NUMBER
           Проверь GitHub Actions:
