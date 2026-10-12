@@ -1,4 +1,5 @@
 name: Renew VAbkhazii Session Once
+# one-shot-rerun: 1791831602477
 
 on:
   push:
