@@ -5,12 +5,15 @@ on:
   push:
     paths:
       - ".github/workflows/renew-vabkhazii-session.yml"
+      - "renew_vabkhazii_session.py"
+      - "tg_session_cache.py"
+      - "resolve_tg_session.py"
 
 permissions:
   contents: write
 
 concurrency:
-  group: vabkhazii-telegram-user-session
+  group: vabkhazii-session-renewal
   cancel-in-progress: false
 
 jobs:
