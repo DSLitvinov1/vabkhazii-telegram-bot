@@ -139,7 +139,7 @@ STATE_DIR = Path(".lead_state")
 STATE_FILE = STATE_DIR / "state.json"
 
 MAX_AGE_HOURS = 72
-SEARCH_LIMIT = 70
+SEARCH_LIMIT = 80
 CHAT_SCAN_LIMIT = 700
 # Do not discard valid leads just because a run found many.
 MAX_LEADS_PER_RUN = None
@@ -159,8 +159,8 @@ SESSION_WARNING_INTERVAL_MINUTES = 360
 
 # Автопоиск новых публичных туристических групп Telegram.
 DISCOVERY_ENABLED = True
-DISCOVERY_LIMIT_PER_QUERY = 30
-MAX_DISCOVERED_CHATS = 150
+DISCOVERY_LIMIT_PER_QUERY = 40
+MAX_DISCOVERED_CHATS = 200
 DISCOVERY_CHAT_SCAN_LIMIT = 400
 DISCOVERY_QUERY_DELAY_SECONDS = 0.35
 
@@ -172,10 +172,10 @@ CIS_ENABLED = True
 # уже вступил пользовательский Telegram-аккаунт. Бот НЕ вступает никуда сам,
 # не читает личные переписки и не сканирует обычные нетуристические группы.
 MY_CHATS_ENABLED = True
-MY_CHATS_MAX_GROUPS = 180
+MY_CHATS_MAX_GROUPS = 220
 MY_CHATS_SCAN_LIMIT = 700
-MY_CHATS_BOOTSTRAP_PER_RUN = 24
-DISCOVERY_BOOTSTRAP_PER_RUN = 30
+MY_CHATS_BOOTSTRAP_PER_RUN = 32
+DISCOVERY_BOOTSTRAP_PER_RUN = 40
 
 # Публичные внешние площадки/форумы. Проверяются реже Telegram,
 # чтобы не создавать лишнюю нагрузку на сайты. Используются только
@@ -328,12 +328,31 @@ EXTERNAL_SOURCES = [
 # Белый список именно туристических обсуждений, не рекламных каналов гидов.
 # Недоступный/переименованный чат просто будет пропущен с warning в Actions.
 TARGET_CHATS = [
-    # Туристические обсуждения и форумы, а не каналы продаж экскурсий.
-    "abkhazia_chat",          # АБХАЗИЯ чат туристов
-    "abhazia_travel_chat",    # Абхазия · Наша Планета · чат путешествия
-    "abkhazia4at",            # Абхазия · попутчики
-    "abhaziya_chat",          # Абхазия чат / форум
-    "abhazia_hotels_travelask", # Отзывы об отелях Абхазии / форумные темы TravelAsk
+    "abkhazia_chat",
+    "abhazia_travel_chat",
+    "abkhazia4at",
+    "abhaziya_chat",
+    "abhazia_hotels_travelask",
+    "chatyourabkhazia",
+    "Sukhum_Abhazia_chat",
+    "poputchiki_abkhazia",
+    "poputchikisochiabhazia",
+    "abh_poputchiki",
+    "sukhumefirchat",
+    "chat_ekskursii",
+    "forum_abkhazia",
+    "GAGRA8",
+    "Abkhaziaz",
+    "Abkhaziay",
+    "travelingabh",
+    "pitsundas",
+    "ElisavetaVAbhazii",
+    "abhbeach",
+    "turyvabhaziyu",
+    "Sukhums",
+    "abhazturchat",
+    "ABKHAZIAH",
+    "AbkhaziaKPP",
 ]
 
 # По этим фразам Telegram API ищет новые публичные группы.
@@ -755,7 +774,7 @@ PRIORITY_SEARCH_QUERIES = list(dict.fromkeys(
     + PRIORITY_EXCURSION_SEARCH_QUERIES
 ))
 
-GLOBAL_QUERY_BATCH_SIZE = 72
+GLOBAL_QUERY_BATCH_SIZE = 88
 
 FAST_PRIORITY_SEARCH_QUERIES = [
     "подскажите такси Абхазия",
