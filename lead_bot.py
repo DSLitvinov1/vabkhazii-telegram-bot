@@ -928,6 +928,10 @@ WARM_PHRASES = [
     "едем в абхазию", "приезжаем в абхазию", "будем в абхазии",
     "отдыхаем в абхазии", "мы в гагре", "мы в пицунде",
     "мы в сухуме", "мы в новом афоне", "как добраться", "как доехать",
+    "как добираться", "где взять экскурсию", "где купить экскурсию",
+    "какую экскурсию", "какие экскурсии", "кто ездил на экскурсию",
+    "кто был на экскурсии", "можно присоединиться", "с кем съездить",
+    "поздний прилет", "маршрутки уже не ходят",
 ]
 
 URGENT_PHRASES = [
@@ -2594,6 +2598,13 @@ def infer_contextual_service_intent(text):
         ]
     )
     if scenic_route and scenic_trip_question and not explicit_transport_mode:
+        return "excursion"
+
+    if (
+        any(marker in lower for marker in ["экскурс", "гид", "экскурсовод"])
+        and request_word
+        and not explicit_transport_mode
+    ):
         return "excursion"
 
     if hidden_transport_problem:
