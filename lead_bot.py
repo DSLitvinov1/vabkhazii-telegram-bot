@@ -1360,7 +1360,7 @@ ROUTES = {
         "анакопия", "анакопийская крепость", "псырцха", "новоафонский монастырь",
     ],
     "Гагра и окрестности": [
-        "мамзышха", "мамдзышха", "мамзышка", "гора мамзышха",
+        "мамзышх", "мамдзышх", "мамзышха", "мамдзышха", "мамзышка", "гора мамзышха",
         "жоэквара", "гагрская колоннада", "замок принца ольденбургского",
     ],
     "Восточная Абхазия": [
@@ -2300,10 +2300,20 @@ def detect_city(text):
 
 def detect_route(text):
     lower = text.lower()
+    matches = []
+
     for route, variants in ROUTES.items():
-        if any(variant in lower for variant in variants):
-            return route
-    return None
+        for variant in variants:
+            if variant in lower:
+                matches.append((len(variant), route, variant))
+
+    if not matches:
+        return None
+
+    # Prefer the most specific/longest match. This prevents short names such
+    # as «Мзы» from stealing «Мамзышха».
+    matches.sort(key=lambda item: item[0], reverse=True)
+    return matches[0][1]
 
 
 def detect_people(text):
