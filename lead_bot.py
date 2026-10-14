@@ -321,6 +321,7 @@ TARGET_CHATS = [
     "abhazia_travel_chat",    # Абхазия · Наша Планета · чат путешествия
     "abkhazia4at",            # Абхазия · попутчики
     "abhaziya_chat",          # Абхазия чат / форум
+    "abhazia_hotels_travelask", # Отзывы об отелях Абхазии / форумные темы TravelAsk
 ]
 
 # По этим фразам Telegram API ищет новые публичные группы.
