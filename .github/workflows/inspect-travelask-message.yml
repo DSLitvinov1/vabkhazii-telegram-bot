@@ -1,0 +1,72 @@
+name: Inspect TravelAsk Message
+
+on:
+  push:
+    paths:
+      - ".github/workflows/inspect-travelask-message.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore encrypted Telegram session
+        uses: actions/cache/restore@v4
+        with:
+          path: .tg_session_cache
+          key: inspect-travelask-${{ github.run_id }}
+          restore-keys: |
+            vabkhazii-tg-session-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet telethon pynacl
+      - name: Resolve Telegram session
+        env:
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          TG_SESSION_FALLBACK: ${{ secrets.TG_SESSION }}
+        run: python resolve_tg_session.py
+      - name: Inspect message
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import asyncio, os
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+          import lead_bot
+
+          async def main():
+              client=TelegramClient(StringSession(os.environ["TG_SESSION"]), int(os.environ["TG_API_ID"]), os.environ["TG_API_HASH"])
+              await client.connect()
+              try:
+                  entity=await client.get_entity("abhazia_hotels_travelask")
+                  print("TITLE=",getattr(entity,"title",""))
+                  print("USERNAME=",getattr(entity,"username",""))
+                  print("JOINED_SELECTED=",lead_bot.is_joined_tourist_chat(entity))
+                  for mid in range(2262,2273):
+                      m=await client.get_messages(entity,ids=mid)
+                      if not m:
+                          continue
+                      text=lead_bot.normalize(getattr(m,"message",""))
+                      if not text:
+                          continue
+                      c,reason=lead_bot.classify_lead_detailed(text,source_context="MY:Отзывы об отелях Абхазии (@abhazia_hotels_travelask)")
+                      print("ID=",mid)
+                      print("TEXT=",text.replace("\n"," | "))
+                      print("CLASS=",c)
+                      print("REASON=",reason)
+                      print("REPLY_TO=",getattr(m,"reply_to_msg_id",None))
+                      print("---")
+              finally:
+                  await client.disconnect()
+          asyncio.run(main())
+          PY
