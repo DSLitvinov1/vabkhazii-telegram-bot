@@ -512,6 +512,67 @@ class LeadClassificationTests(unittest.TestCase):
         )
         self.assertTrue(lead_bot.is_joined_tourist_chat(chat))
 
+    def test_hidden_night_transport_problem_is_kept(self):
+        result, reason = self.classify(
+            "Мне нужна ночная цена, опять рейс перенесли. "
+            "Как ночью добираться хз. И у аквафона по вай фаю не вызвать."
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+        self.assertEqual(result["temperature"], "warm")
+
+    def test_delayed_flight_natural_wording_is_transfer(self):
+        result, reason = self.classify(
+            "Рейс задержали, прилетаем поздно. Как ночью добираться до Гагры?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+
+    def test_no_route_word_needed_for_transport_problem_in_abkhazia_source(self):
+        result, reason = self.classify(
+            "Маршрутки уже не ходят, как уехать ночью?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "transfer")
+
+    def test_historical_taxi_experience_stays_filtered(self):
+        result, reason = self.classify(
+            "Мы ехали в августе. По приложению такси цена была 2700. "
+            "Таксист повез нас за 3 тыс."
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
+    def test_advice_about_individual_transfer_is_not_new_lead(self):
+        result, reason = self.classify(
+            "Может Вам лучше индивидуальный трансфер? "
+            "И водитель будет следить за Вашим рейсом."
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(reason)
+
+    def test_travelask_hotel_forum_is_priority_source(self):
+        self.assertIn("abhazia_hotels_travelask", lead_bot.TARGET_CHATS)
+
+    def test_search_expansion_covers_hidden_transport_and_local_excursions(self):
+        all_queries = " ".join(lead_bot.SEARCH_QUERIES).lower()
+        for marker in (
+            "как ночью добираться",
+            "рейс перенесли как добраться",
+            "до которого часа такси псоу",
+            "мы в гагре куда поехать",
+            "экскурсия на завтра гагра",
+        ):
+            self.assertIn(marker, all_queries)
+
+        self.assertGreaterEqual(lead_bot.SEARCH_LIMIT, 70)
+        self.assertGreaterEqual(lead_bot.MAX_DISCOVERED_CHATS, 150)
+        self.assertGreaterEqual(lead_bot.MY_CHATS_BOOTSTRAP_PER_RUN, 20)
+        self.assertGreaterEqual(lead_bot.DISCOVERY_BOOTSTRAP_PER_RUN, 25)
+
 
 if __name__ == "__main__":
     unittest.main()
