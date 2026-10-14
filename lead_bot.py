@@ -369,6 +369,8 @@ TARGET_CHATS = [
     "abhazturchat",
     "ABKHAZIAH",
     "AbkhaziaKPP",
+    "abhazia_chat",
+    "NewsApsnyChat",
 ]
 
 # По этим фразам Telegram API ищет новые публичные группы.
