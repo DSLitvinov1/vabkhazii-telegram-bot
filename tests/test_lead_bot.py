@@ -671,6 +671,36 @@ class LeadClassificationTests(unittest.TestCase):
         )
         self.assertGreaterEqual(lead_bot.GLOBAL_QUERY_BATCH_SIZE, 96)
 
+    def test_prebooking_excursion_questions_are_kept_warm(self):
+        samples = [
+            "Кто ездил на Рицу? Что посоветуете на завтра?",
+            "Кто ходил на Мзы? Хотим съездить завтра.",
+            "Какую экскурсию взять из Гагры на завтра?",
+        ]
+        for text in samples:
+            with self.subTest(text=text):
+                result, reason = self.classify(text)
+                self.assertIsNone(reason)
+                self.assertIsNotNone(result)
+                self.assertEqual(result["lead_type"], "excursion")
+
+    def test_rideshare_demand_queries_are_in_search_base(self):
+        joined = " ".join(lead_bot.SEARCH_QUERIES).lower()
+        for marker in (
+            "ищу попутку абхазия",
+            "кто едет псоу гагра сегодня",
+            "кто заберет с псоу",
+            "нужно уехать с псоу",
+        ):
+            self.assertIn(marker, joined)
+
+    def test_expanded_priority_batch_still_fits(self):
+        self.assertLessEqual(
+            len(lead_bot.PRIORITY_SEARCH_QUERIES),
+            lead_bot.GLOBAL_QUERY_BATCH_SIZE,
+        )
+        self.assertGreaterEqual(lead_bot.GLOBAL_QUERY_BATCH_SIZE, 104)
+
 
 if __name__ == "__main__":
     unittest.main()
