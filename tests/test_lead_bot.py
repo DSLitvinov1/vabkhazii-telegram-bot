@@ -625,6 +625,52 @@ class LeadClassificationTests(unittest.TestCase):
             lead_bot.GLOBAL_QUERY_BATCH_SIZE,
         )
 
+    def test_second_wave_global_message_sources_are_pinned(self):
+        for username in (
+            "blablacar_abh",
+            "krasnaya_polyana",
+            "gidvsochi",
+            "naidisvoihsochi",
+        ):
+            self.assertIn(username, lead_bot.TARGET_CHATS)
+
+    def test_extended_excursion_geography_is_recognized(self):
+        samples = {
+            "Гагра и окрестности": "Подскажите, как попасть на Мамзышху завтра?",
+            "Рица": "Хотим завтра на Голубое озеро и Юпшарский каньон.",
+            "Новый Афон": "Подскажите экскурсию в Новоафонскую пещеру завтра.",
+            "Восточная Абхазия": "Хотим съездить в Кындыг и Кодорское ущелье.",
+            "Святыни": "Ищем экскурсию в Мокву, Илор и Бедиа.",
+        }
+        for route, text in samples.items():
+            with self.subTest(route=route):
+                self.assertEqual(lead_bot.detect_route(text), route)
+                result, reason = self.classify(text)
+                self.assertIsNone(reason)
+                self.assertIsNotNone(result)
+                self.assertEqual(result["lead_type"], "excursion")
+
+    def test_new_long_tail_excursion_queries_are_present(self):
+        joined = " ".join(lead_bot.SEARCH_QUERIES).lower()
+        for marker in (
+            "мамзышха",
+            "гегский водопад",
+            "ауадхара",
+            "новоафонская пещера",
+            "кодорское ущелье",
+            "псху",
+            "паломничество",
+            "трекинг абхазия",
+        ):
+            self.assertIn(marker, joined)
+
+    def test_priority_queries_still_fit_expanded_batch(self):
+        self.assertLessEqual(
+            len(lead_bot.PRIORITY_SEARCH_QUERIES),
+            lead_bot.GLOBAL_QUERY_BATCH_SIZE,
+        )
+        self.assertGreaterEqual(lead_bot.GLOBAL_QUERY_BATCH_SIZE, 96)
+
 
 if __name__ == "__main__":
     unittest.main()
