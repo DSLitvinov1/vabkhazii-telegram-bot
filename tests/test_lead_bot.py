@@ -573,6 +573,56 @@ class LeadClassificationTests(unittest.TestCase):
         self.assertGreaterEqual(lead_bot.MY_CHATS_BOOTSTRAP_PER_RUN, 20)
         self.assertGreaterEqual(lead_bot.DISCOVERY_BOOTSTRAP_PER_RUN, 25)
 
+    def test_deep_survey_priority_sources_are_pinned(self):
+        for username in (
+            "chatyourabkhazia",
+            "Sukhum_Abhazia_chat",
+            "poputchiki_abkhazia",
+            "sukhumefirchat",
+            "forum_abkhazia",
+            "GAGRA8",
+            "pitsundas",
+            "AbkhaziaKPP",
+        ):
+            self.assertIn(username, lead_bot.TARGET_CHATS)
+
+    def test_deep_search_capacity_is_expanded(self):
+        self.assertGreaterEqual(lead_bot.SEARCH_LIMIT, 80)
+        self.assertGreaterEqual(lead_bot.MAX_DISCOVERED_CHATS, 200)
+        self.assertGreaterEqual(lead_bot.MY_CHATS_MAX_GROUPS, 220)
+        self.assertGreaterEqual(lead_bot.GLOBAL_QUERY_BATCH_SIZE, 88)
+
+    def test_natural_excursion_purchase_question_is_kept(self):
+        result, reason = self.classify(
+            "Подскажите, где взять экскурсию из Гагры на завтра?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+
+    def test_excursion_experience_question_is_kept_as_opportunity(self):
+        result, reason = self.classify(
+            "Кто ездил на экскурсию в Восточную Абхазию? Что посоветуете?"
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lead_type"], "excursion")
+
+    def test_new_priority_searches_fit_batch(self):
+        joined = " ".join(lead_bot.PRIORITY_SEARCH_QUERIES).lower()
+        for marker in (
+            "маршрутки уже не ходят псоу",
+            "как добраться от псоу до гагры",
+            "какие экскурсии посоветуете абхазия",
+            "где взять экскурсию абхазия",
+            "акармара как попасть",
+        ):
+            self.assertIn(marker, joined)
+        self.assertLessEqual(
+            len(lead_bot.PRIORITY_SEARCH_QUERIES),
+            lead_bot.GLOBAL_QUERY_BATCH_SIZE,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
