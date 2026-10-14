@@ -52,20 +52,26 @@ jobs:
                   print("TITLE=",getattr(entity,"title",""))
                   print("USERNAME=",getattr(entity,"username",""))
                   print("JOINED_SELECTED=",lead_bot.is_joined_tourist_chat(entity))
-                  for mid in range(2262,2273):
-                      m=await client.get_messages(entity,ids=mid)
-                      if not m:
-                          continue
+                  count=0
+                  async for m in client.iter_messages(entity, reply_to=2267, limit=120):
                       text=lead_bot.normalize(getattr(m,"message",""))
                       if not text:
                           continue
-                      c,reason=lead_bot.classify_lead_detailed(text,source_context="MY:Отзывы об отелях Абхазии (@abhazia_hotels_travelask)")
-                      print("ID=",mid)
+                      low=text.casefold()
+                      if not any(k in low for k in ["ноч", "рейс", "добират", "аквафон", "трансфер", "водитель", "цена"]):
+                          continue
+                      count += 1
+                      c,reason=lead_bot.classify_lead_detailed(text,source_context="MY:Отзывы об отелях Абхазии (@abhazia_hotels_travelask) TOPIC:Пансионат Нарт Гагра")
+                      print("ID=",getattr(m,"id",None))
                       print("TEXT=",text.replace("\n"," | "))
                       print("CLASS=",c)
                       print("REASON=",reason)
                       print("REPLY_TO=",getattr(m,"reply_to_msg_id",None))
+                      print("TOP_ID=",getattr(getattr(m,"reply_to",None),"reply_to_top_id",None))
                       print("---")
+                      if count>=20:
+                          break
+                  print("MATCHES=",count)
               finally:
                   await client.disconnect()
           asyncio.run(main())
