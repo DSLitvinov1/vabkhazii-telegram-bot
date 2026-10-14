@@ -583,6 +583,8 @@ class LeadClassificationTests(unittest.TestCase):
             "GAGRA8",
             "pitsundas",
             "AbkhaziaKPP",
+            "abhazia_chat",
+            "NewsApsnyChat",
         ):
             self.assertIn(username, lead_bot.TARGET_CHATS)
 
