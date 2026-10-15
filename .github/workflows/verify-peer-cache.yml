@@ -1,0 +1,78 @@
+name: Verify Telegram Peer Cache
+
+on:
+  push:
+    paths:
+      - ".github/workflows/verify-peer-cache.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: .tg_session_cache
+          key: verify-peer-cache-${{ github.run_id }}
+          restore-keys: |
+            vabkhazii-tg-session-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet telethon pynacl
+      - name: Resolve Telegram session
+        env:
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          TG_SESSION_FALLBACK: ${{ secrets.TG_SESSION }}
+        run: python resolve_tg_session.py
+      - name: Verify cached peer resolution path
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
+          LEADS_UNIT_TEST: "1"
+        run: |
+          python - <<'PY'
+          import asyncio, os
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+          import lead_bot
+
+          async def main():
+              client=TelegramClient(
+                  StringSession(os.environ["TG_SESSION"]),
+                  int(os.environ["TG_API_ID"]),
+                  os.environ["TG_API_HASH"],
+              )
+              await client.connect()
+              state={"telegram_peer_cache":{}}
+              try:
+                  for username in (
+                      "abhazia_hotels_travelask",
+                      "abhaziaturchat",
+                      "krasnaya_polyana",
+                  ):
+                      entity=await lead_bot.resolve_public_chat_for_scan(
+                          client,state,username
+                      )
+                      if entity is None:
+                          raise RuntimeError("Could not resolve "+username)
+                      cached=lead_bot.get_cached_public_chat_peer(state,username)
+                      if cached is None:
+                          raise RuntimeError("Peer was not cached: "+username)
+                      got=False
+                      async for _ in client.iter_messages(cached,limit=1):
+                          got=True
+                          break
+                      print("OK",username,"history=",got)
+              finally:
+                  await client.disconnect()
+
+          asyncio.run(main())
+          PY
