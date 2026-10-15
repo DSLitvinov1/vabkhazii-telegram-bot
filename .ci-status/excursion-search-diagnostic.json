@@ -1,0 +1,301 @@
+{
+  "priority_excursion_queries": 44,
+  "search_limit_per_query": 80,
+  "max_age_hours": 72,
+  "totals": {
+    "returned": 2022,
+    "fresh": 39,
+    "accepted": 28,
+    "hot": 16,
+    "warm": 12,
+    "old": 1983,
+    "filtered": 11
+  },
+  "filter_reasons": [
+    [
+      "seller_or_ad",
+      8
+    ],
+    [
+      "no_direct_service_intent",
+      2
+    ],
+    [
+      "no_abkhazia_context",
+      1
+    ]
+  ],
+  "top_accepted_chats": [
+    [
+      "VAbkhaziiLeadsBot",
+      23
+    ],
+    [
+      "ecosistemSV_bot",
+      3
+    ],
+    [
+      "naidisvoihsochi",
+      2
+    ]
+  ],
+  "queries": [
+    {
+      "query": "нужна экскурсия Абхазия",
+      "returned": 80,
+      "fresh": 9,
+      "accepted": 9,
+      "hot": 4,
+      "warm": 5,
+      "old": 71
+    },
+    {
+      "query": "ищу экскурсию Абхазия",
+      "returned": 80,
+      "fresh": 2,
+      "accepted": 2,
+      "hot": 1,
+      "warm": 1,
+      "old": 78
+    },
+    {
+      "query": "посоветуйте экскурсию Абхазия",
+      "returned": 74,
+      "old": 74
+    },
+    {
+      "query": "какие экскурсии Абхазия",
+      "returned": 80,
+      "fresh": 6,
+      "accepted": 6,
+      "hot": 3,
+      "warm": 3,
+      "old": 74
+    },
+    {
+      "query": "нужен гид Абхазия",
+      "returned": 77,
+      "fresh": 7,
+      "filtered": 5,
+      "accepted": 2,
+      "hot": 1,
+      "warm": 1,
+      "old": 70
+    },
+    {
+      "query": "ищу гида Абхазия",
+      "returned": 28,
+      "old": 28
+    },
+    {
+      "query": "индивидуальная экскурсия Абхазия",
+      "returned": 80,
+      "fresh": 3,
+      "filtered": 2,
+      "accepted": 1,
+      "warm": 1,
+      "old": 77
+    },
+    {
+      "query": "куда съездить из Гагры",
+      "returned": 10,
+      "old": 10
+    },
+    {
+      "query": "куда съездить из Пицунды",
+      "returned": 3,
+      "old": 3
+    },
+    {
+      "query": "куда съездить из Сухума",
+      "returned": 8,
+      "old": 8
+    },
+    {
+      "query": "что посмотреть в Гагре",
+      "returned": 80,
+      "old": 80
+    },
+    {
+      "query": "что посмотреть в Пицунде",
+      "returned": 80,
+      "old": 80
+    },
+    {
+      "query": "что посмотреть в Сухуме",
+      "returned": 80,
+      "old": 80
+    },
+    {
+      "query": "кто возит на Рицу",
+      "returned": 27,
+      "old": 27
+    },
+    {
+      "query": "хочу на Рицу",
+      "returned": 80,
+      "fresh": 3,
+      "filtered": 3,
+      "old": 77
+    },
+    {
+      "query": "как попасть на Рицу",
+      "returned": 24,
+      "old": 24
+    },
+    {
+      "query": "Мзы экскурсия",
+      "returned": 67,
+      "old": 67
+    },
+    {
+      "query": "как попасть на Мзы",
+      "returned": 1,
+      "old": 1
+    },
+    {
+      "query": "Акармара экскурсия",
+      "returned": 80,
+      "old": 80
+    },
+    {
+      "query": "Восточная Абхазия экскурсия",
+      "returned": 80,
+      "fresh": 2,
+      "accepted": 2,
+      "hot": 1,
+      "warm": 1,
+      "old": 78
+    },
+    {
+      "query": "Новый Афон экскурсия",
+      "returned": 80,
+      "fresh": 4,
+      "accepted": 3,
+      "hot": 3,
+      "filtered": 1,
+      "old": 76
+    },
+    {
+      "query": "джиппинг Абхазия",
+      "returned": 72,
+      "old": 72
+    },
+    {
+      "query": "экскурсия с детьми Абхазия",
+      "returned": 80,
+      "old": 80
+    },
+    {
+      "query": "святыни Абхазии экскурсия",
+      "returned": 21,
+      "fresh": 2,
+      "accepted": 2,
+      "hot": 2,
+      "old": 19
+    },
+    {
+      "query": "мы в Гагре куда поехать",
+      "returned": 29,
+      "old": 29
+    },
+    {
+      "query": "мы в Пицунде куда поехать",
+      "returned": 6,
+      "old": 6
+    },
+    {
+      "query": "что посмотреть рядом с Гагрой",
+      "returned": 23,
+      "old": 23
+    },
+    {
+      "query": "экскурсия на завтра Гагра",
+      "returned": 31,
+      "old": 31
+    },
+    {
+      "query": "экскурсия на завтра Пицунда",
+      "returned": 6,
+      "old": 6
+    },
+    {
+      "query": "экскурсия на завтра Сухум",
+      "returned": 24,
+      "old": 24
+    },
+    {
+      "query": "какие экскурсии посоветуете Абхазия",
+      "returned": 38,
+      "old": 38
+    },
+    {
+      "query": "где взять экскурсию Абхазия",
+      "returned": 35,
+      "old": 35
+    },
+    {
+      "query": "индивидуальный гид Гагра",
+      "returned": 38,
+      "old": 38
+    },
+    {
+      "query": "Рица завтра экскурсия",
+      "returned": 55,
+      "old": 55
+    },
+    {
+      "query": "Акармара как попасть",
+      "returned": 3,
+      "old": 3
+    },
+    {
+      "query": "Восточная Абхазия что посмотреть",
+      "returned": 14,
+      "old": 14
+    },
+    {
+      "query": "Мамзышха как попасть",
+      "returned": 1,
+      "old": 1
+    },
+    {
+      "query": "Гегский водопад экскурсия",
+      "returned": 80,
+      "old": 80
+    },
+    {
+      "query": "Кындыг экскурсия",
+      "returned": 80,
+      "fresh": 1,
+      "accepted": 1,
+      "hot": 1,
+      "old": 79
+    },
+    {
+      "query": "Новоафонская пещера экскурсия",
+      "returned": 80,
+      "old": 80
+    },
+    {
+      "query": "паломничество Абхазия экскурсия",
+      "returned": 1,
+      "old": 1
+    },
+    {
+      "query": "кто ездил на Рицу",
+      "returned": 80,
+      "old": 80
+    },
+    {
+      "query": "кто ходил на Мзы",
+      "returned": 2,
+      "old": 2
+    },
+    {
+      "query": "какую экскурсию взять из Гагры",
+      "returned": 24,
+      "old": 24
+    }
+  ]
+}
