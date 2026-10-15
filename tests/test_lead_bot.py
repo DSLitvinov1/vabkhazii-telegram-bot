@@ -701,6 +701,26 @@ class LeadClassificationTests(unittest.TestCase):
         )
         self.assertGreaterEqual(lead_bot.GLOBAL_QUERY_BATCH_SIZE, 104)
 
+    def test_all_excursion_searches_run_every_cycle(self):
+        for query in lead_bot.EXCURSION_ALWAYS_SEARCH_QUERIES:
+            self.assertIn(query, lead_bot.PRIORITY_SEARCH_QUERIES)
+        self.assertLessEqual(
+            len(lead_bot.PRIORITY_SEARCH_QUERIES),
+            lead_bot.GLOBAL_QUERY_BATCH_SIZE,
+        )
+
+    def test_global_search_depth_is_large_enough_for_bot_noise(self):
+        self.assertGreaterEqual(lead_bot.SEARCH_LIMIT, 120)
+
+    def test_additional_excursion_discussion_groups_are_pinned(self):
+        for username in (
+            "abhaziaturchat",
+            "chat_sochi_abkhazia_trip",
+            "abkhazia_active_rests",
+            "pohody_sochi_abkhazia",
+        ):
+            self.assertIn(username, lead_bot.TARGET_CHATS)
+
 
 if __name__ == "__main__":
     unittest.main()
