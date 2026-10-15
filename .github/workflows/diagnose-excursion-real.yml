@@ -1,0 +1,137 @@
+name: Diagnose Real Excursion Demand
+
+on:
+  push:
+    paths:
+      - ".github/workflows/diagnose-excursion-real.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: .tg_session_cache
+          key: excursion-real-${{ github.run_id }}
+          restore-keys: |
+            vabkhazii-tg-session-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet telethon pynacl
+      - name: Resolve Telegram session
+        env:
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          TG_SESSION_FALLBACK: ${{ secrets.TG_SESSION }}
+        run: python resolve_tg_session.py
+      - name: Count real excursion demand
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          LEADS_BOT_TOKEN: ${{ secrets.LEADS_BOT_TOKEN }}
+          LEADS_CHAT_ID: ${{ secrets.LEADS_CHAT_ID }}
+          LEADS_UNIT_TEST: "1"
+        run: |
+          python - <<'PY'
+          import asyncio, json, os
+          from collections import Counter
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+          import lead_bot
+
+          CUTOFF=datetime.now(timezone.utc)-timedelta(hours=lead_bot.MAX_AGE_HOURS)
+          TECH={
+              "vabkhazii","vabkhaziileadsbot","ecosistemsv_bot",
+              "vabkhazii_chat","vabkhazii_leads_bot",
+          }
+
+          async def main():
+              client=TelegramClient(
+                  StringSession(os.environ["TG_SESSION"]),
+                  int(os.environ["TG_API_ID"]),
+                  os.environ["TG_API_HASH"],
+              )
+              await client.connect()
+              unique={}
+              reasons=Counter()
+              query_fresh=Counter()
+              query_real=Counter()
+              accepted_by_chat=Counter()
+              try:
+                  me=await client.get_me()
+                  my_id=getattr(me,"id",None)
+                  for q in lead_bot.PRIORITY_EXCURSION_SEARCH_QUERIES:
+                      async for msg in client.iter_messages(None,search=q,limit=lead_bot.SEARCH_LIMIT):
+                          dt=getattr(msg,"date",None)
+                          if dt and dt.tzinfo is None:
+                              dt=dt.replace(tzinfo=timezone.utc)
+                          if not dt or dt<CUTOFF:
+                              continue
+                          query_fresh[q]+=1
+                          sender=await msg.get_sender()
+                          sender_id=getattr(sender,"id",None)
+                          username=(getattr(sender,"username",None) or "").lower()
+                          if sender_id==my_id or getattr(sender,"bot",False) or username in TECH:
+                              reasons["technical_or_own"]+=1
+                              continue
+                          chat=await msg.get_chat()
+                          chat_username=(getattr(chat,"username",None) or "")
+                          key=(getattr(msg,"chat_id",None),getattr(msg,"id",None))
+                          if key in unique:
+                              reasons["duplicate_across_queries"]+=1
+                              continue
+                          text=(getattr(msg,"message",None) or "").strip()
+                          result,reason=lead_bot.classify_lead_detailed(
+                              text,
+                              source_context=f"GLOBAL:{getattr(chat,'title','')} (@{chat_username})",
+                          )
+                          unique[key]={
+                              "accepted":bool(result),
+                              "reason":reason,
+                              "lead_type":(result or {}).get("lead_type"),
+                              "temperature":(result or {}).get("temperature"),
+                              "chat":chat_username or getattr(chat,"title",""),
+                              "query":q,
+                          }
+                          if result:
+                              query_real[q]+=1
+                              accepted_by_chat[chat_username or getattr(chat,"title","")]+=1
+                          else:
+                              reasons[reason or "unclassified"]+=1
+
+                  accepted=[v for v in unique.values() if v["accepted"]]
+                  report={
+                      "priority_queries":len(lead_bot.PRIORITY_EXCURSION_SEARCH_QUERIES),
+                      "unique_fresh_nontechnical_messages":len(unique),
+                      "accepted_unique_real_leads":len(accepted),
+                      "hot":sum(1 for v in accepted if v["temperature"]=="hot"),
+                      "warm":sum(1 for v in accepted if v["temperature"]=="warm"),
+                      "filter_reasons":reasons.most_common(20),
+                      "accepted_by_chat":accepted_by_chat.most_common(30),
+                      "queries_with_real_leads":query_real.most_common(),
+                      "queries_with_fresh_results":query_fresh.most_common(),
+                  }
+                  Path(".ci-status").mkdir(exist_ok=True)
+                  Path(".ci-status/excursion-real-diagnostic.json").write_text(
+                      json.dumps(report,ensure_ascii=False,indent=2),
+                      encoding="utf-8",
+                  )
+              finally:
+                  await client.disconnect()
+          asyncio.run(main())
+          PY
+      - name: Publish result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ci-status/excursion-real-diagnostic.json
+          git commit -m "Record real excursion demand diagnostic" || exit 0
+          git push
