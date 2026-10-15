@@ -45,6 +45,19 @@ jobs:
         env:
           LEADS_UNIT_TEST: "1"
         run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Force one full global search without clearing deduplication
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path(".lead_state/state.json")
+          if path.exists():
+              data=json.loads(path.read_text(encoding="utf-8"))
+              data["global_last_scan"]=None
+              data["global_fast_last_scan"]=None
+              path.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
+          PY
+
       - name: Run current search
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
