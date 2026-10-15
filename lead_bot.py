@@ -16,7 +16,7 @@ from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
 from telethon.tl.functions.contacts import SearchRequest
-from telethon.tl.types import User
+from telethon.tl.types import InputPeerChannel, User
 
 
 # =========================================================
@@ -1454,6 +1454,7 @@ def load_state():
     state.setdefault("discovered_last_scan", None)
     state.setdefault("discovery_refresh_last_scan", None)
     state.setdefault("discovered_chat_usernames", [])
+    state.setdefault("telegram_peer_cache", {})
     state.setdefault("tg_session_warning_last_sent", None)
     return state
 
@@ -1501,7 +1502,11 @@ def mark_state_time(state, key):
 
 
 def chat_cursor_key(entity, source_kind):
-    entity_id = getattr(entity, "id", None)
+    entity_id = (
+        getattr(entity, "id", None)
+        or getattr(entity, "channel_id", None)
+        or getattr(entity, "chat_id", None)
+    )
     if entity_id is not None:
         return f"{source_kind}:{entity_id}"
     username = (getattr(entity, "username", None) or "").lower()
@@ -1509,6 +1514,65 @@ def chat_cursor_key(entity, source_kind):
         return f"{source_kind}:@{username}"
     title = normalize(getattr(entity, "title", "") or "unknown")
     return f"{source_kind}:{title}"
+
+
+def cache_public_chat_peer(state, entity):
+    username = (getattr(entity, "username", None) or "").strip().lower()
+    entity_id = getattr(entity, "id", None)
+    access_hash = getattr(entity, "access_hash", None)
+
+    if not username or entity_id is None or access_hash is None:
+        return
+
+    state.setdefault("telegram_peer_cache", {})[username] = {
+        "id": int(entity_id),
+        "access_hash": int(access_hash),
+        "title": normalize(getattr(entity, "title", "") or ""),
+    }
+
+
+def get_cached_public_chat_peer(state, username):
+    key = str(username or "").strip().lstrip("@").lower()
+    raw = state.setdefault("telegram_peer_cache", {}).get(key)
+    if not isinstance(raw, dict):
+        return None
+
+    try:
+        return InputPeerChannel(
+            channel_id=int(raw["id"]),
+            access_hash=int(raw["access_hash"]),
+        )
+    except Exception:
+        state.setdefault("telegram_peer_cache", {}).pop(key, None)
+        return None
+
+
+async def resolve_public_chat_for_scan(client, state, username):
+    cached = get_cached_public_chat_peer(state, username)
+    if cached is not None:
+        return cached
+
+    query = str(username or "").strip().lstrip("@")
+    if not query:
+        return None
+
+    # Resolve public chats through Telegram's public search and persist the
+    # channel id/access hash. This avoids repeated ResolveUsernameRequest calls
+    # on every stateless GitHub runner.
+    try:
+        result = await client(SearchRequest(q=query, limit=20))
+        for chat in getattr(result, "chats", []) or []:
+            found_username = (getattr(chat, "username", None) or "").strip()
+            if found_username.lower() != query.lower():
+                continue
+            cache_public_chat_peer(state, chat)
+            return chat
+    except FloodWaitError:
+        raise
+    except Exception as exc:
+        print(f"[PEER CACHE WARNING] @{query}: {exc}")
+
+    return None
 
 
 def get_chat_cursor(state, entity, source_kind):
@@ -2258,7 +2322,7 @@ async def list_joined_tourist_chats(client):
     return selected
 
 
-async def discover_public_tourist_chats(client):
+async def discover_public_tourist_chats(client, state=None):
     """Ищет публичные туристические группы Telegram без автоматического вступления."""
     if not DISCOVERY_ENABLED:
         return []
@@ -2284,6 +2348,8 @@ async def discover_public_tourist_chats(client):
                     continue
 
                 discovered[username] = chat
+                if state is not None:
+                    cache_public_chat_peer(state, chat)
                 if len(discovered) >= MAX_DISCOVERED_CHATS:
                     break
 
@@ -4591,7 +4657,10 @@ async def chat_scan_worker(client, state, cutoff, self_user_id, stats):
         source_name = f"@{chat_ref}"
         print(f"[CHAT] {source_name}")
         try:
-            entity = await client.get_entity(chat_ref)
+            entity = await resolve_public_chat_for_scan(client, state, chat_ref)
+            if entity is None:
+                print(f"[CHAT WARNING] {source_name}: public chat could not be resolved")
+                continue
             cursor = get_chat_cursor(state, entity, "whitelist")
             newest_id = cursor
             kwargs = {"limit": None if cursor > 0 else CHAT_SCAN_LIMIT}
@@ -4659,25 +4728,28 @@ async def get_discovered_chats_for_scan(client, state):
     ]
 
     if refresh_due or not cached:
-        chats = await discover_public_tourist_chats(client)
+        chats = await discover_public_tourist_chats(client, state=state)
+        refs = []
         usernames = []
         for chat in chats:
-            username = getattr(chat, "username", None)
-            if username:
-                usernames.append(str(username).lstrip("@"))
+            username = (getattr(chat, "username", None) or "").strip().lstrip("@")
+            if not username:
+                continue
+            usernames.append(username)
+            refs.append((chat, username))
         state["discovered_chat_usernames"] = list(dict.fromkeys(usernames))[:MAX_DISCOVERED_CHATS]
         mark_state_time(state, "discovery_refresh_last_scan")
-        return chats
+        return refs
 
-    chats = []
+    refs = []
     for username in cached[:MAX_DISCOVERED_CHATS]:
-        try:
-            entity = await client.get_entity(username)
-            if is_discovery_candidate_chat(entity):
-                chats.append(entity)
-        except Exception as exc:
-            print(f"[DISCOVERED CACHE WARNING] @{username}: {exc}")
-    return chats
+        peer = get_cached_public_chat_peer(state, username)
+        if peer is None:
+            # Do not repeatedly resolve cached usernames on every GitHub run.
+            # The next discovery refresh will repopulate missing peer metadata.
+            continue
+        refs.append((peer, username))
+    return refs
 
 
 async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats):
@@ -4685,8 +4757,8 @@ async def discovered_chat_scan_worker(client, state, cutoff, self_user_id, stats
     chats = await get_discovered_chats_for_scan(client, state)
     bootstrapped = 0
 
-    for entity in chats:
-        username = getattr(entity, "username", None) or "unknown"
+    for entity, username in chats:
+        username = username or "unknown"
         source_name = f"@{username}"
         print(f"[DISCOVERED CHAT] {source_name}")
 
