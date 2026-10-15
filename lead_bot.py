@@ -139,7 +139,7 @@ STATE_DIR = Path(".lead_state")
 STATE_FILE = STATE_DIR / "state.json"
 
 MAX_AGE_HOURS = 72
-SEARCH_LIMIT = 80
+SEARCH_LIMIT = 120
 CHAT_SCAN_LIMIT = 700
 # Do not discard valid leads just because a run found many.
 MAX_LEADS_PER_RUN = None
@@ -375,6 +375,10 @@ TARGET_CHATS = [
     "krasnaya_polyana",
     "gidvsochi",
     "naidisvoihsochi",
+    "abhaziaturchat",
+    "chat_sochi_abkhazia_trip",
+    "abkhazia_active_rests",
+    "pohody_sochi_abkhazia",
 ]
 
 # По этим фразам Telegram API ищет новые публичные группы.
@@ -960,12 +964,29 @@ PRIORITY_EXCURSION_SEARCH_QUERIES = [
     "какую экскурсию взять из Гагры",
 ]
 
+EXCURSION_ALWAYS_SEARCH_MARKERS = [
+    "экскурс", "гид", "экскурсовод",
+    "рица", "мзы", "акармар", "ткуарчал", "новый афон",
+    "джип", "водопад", "кындыг", "псху", "мамзы", "мамдзы",
+    "ауадхар", "псырцх", "кодор", "чернигов", "амткел",
+    "свят", "палом", "илор", "каманы", "дранда", "бедиа", "моква",
+    "трекинг", "поход", "что посмотреть", "что посетить",
+    "куда съездить", "куда поехать",
+]
+
+EXCURSION_ALWAYS_SEARCH_QUERIES = [
+    query
+    for query in SEARCH_QUERIES
+    if any(marker in query.lower() for marker in EXCURSION_ALWAYS_SEARCH_MARKERS)
+]
+
 PRIORITY_SEARCH_QUERIES = list(dict.fromkeys(
     PRIORITY_TRANSFER_SEARCH_QUERIES
     + PRIORITY_EXCURSION_SEARCH_QUERIES
+    + EXCURSION_ALWAYS_SEARCH_QUERIES
 ))
 
-GLOBAL_QUERY_BATCH_SIZE = 104
+GLOBAL_QUERY_BATCH_SIZE = 180
 
 FAST_PRIORITY_SEARCH_QUERIES = [
     "подскажите такси Абхазия",
