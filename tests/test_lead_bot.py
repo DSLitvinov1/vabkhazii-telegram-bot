@@ -721,6 +721,25 @@ class LeadClassificationTests(unittest.TestCase):
         ):
             self.assertIn(username, lead_bot.TARGET_CHATS)
 
+    def test_public_chat_peer_cache_round_trip(self):
+        class DummyChat:
+            username = "ExampleTouristChat"
+            id = 123456
+            access_hash = 987654321
+            title = "Example Tourist Chat"
+
+        state = {"telegram_peer_cache": {}}
+        lead_bot.cache_public_chat_peer(state, DummyChat())
+        peer = lead_bot.get_cached_public_chat_peer(state, "exampletouristchat")
+
+        self.assertIsNotNone(peer)
+        self.assertEqual(peer.channel_id, 123456)
+        self.assertEqual(peer.access_hash, 987654321)
+        self.assertEqual(
+            lead_bot.chat_cursor_key(peer, "whitelist"),
+            "whitelist:123456",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
